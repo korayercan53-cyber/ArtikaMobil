@@ -1,3 +1,66 @@
+import streamlit as st
+import pandas as pd
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
+import io
+import os
+
+st.set_page_config(page_title="ArtikaPro Mobil", page_icon="🏗️", layout="wide")
+
+# --- CSS ---
+st.markdown("""
+<style>
+    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
+    .stTabs [data-baseweb="tab"] { height: 50px; background-color: #f0f2f6; border-radius: 5px; }
+    .stTabs [aria-selected="true"] { background-color: #ff4b4b; color: white; }
+</style>
+""", unsafe_allow_html=True)
+
+# ==========================================
+# AYARLAR (ID'Yİ BURAYA YAPIŞTIR)
+# ==========================================
+DRIVE_KLASOR_ID = "1mTx-wY_D2W1QGgAV7_xYJMu4UQ3cYybY" 
+# ==========================================
+
+# --- DRIVE BAĞLANTISI ---
+def get_drive_service():
+    scopes = ['https://www.googleapis.com/auth/drive.readonly']
+    if "gcp_service_account" in st.secrets:
+        try:
+            creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scopes)
+            return build('drive', 'v3', credentials=creds)
+        except Exception as e:
+            st.error(f"Secrets hatası: {e}")
+            return None
+    st.error("Kimlik doğrulama anahtarı bulunamadı!")
+    return None
+
+def list_files_in_folder(service, folder_id):
+    # ROBOT ARTIK DOĞRUDAN O KLASÖRE BAKACAK
+    query = f"'{folder_id}' in parents and mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' and trashed = false"
+    try:
+        results = service.files().list(q=query, pageSize=50, fields="files(id, name, modifiedTime)").execute()
+        return results.get('files', [])
+    except Exception as e:
+        st.error(f"Klasör okuma hatası: {e}. Lütfen Klasör ID'sinin doğru olduğundan emin olun.")
+        return []
+
+def load_excel_by_id(service, file_id):
+    try:
+        request = service.files().get_media(fileId=file_id)
+        file_stream = io.BytesIO()
+        downloader = MediaIoBaseDownload(file_stream, request)
+        done = False
+        while done is False:
+            status, done = downloader.next_chunk()
+        file_stream.seek(0)
+        return pd.ExcelFile(file_stream)
+    except Exception as e:
+        st.error(f"Dosya indirme hatası: {e}")
+        return None
+
+# --- ARAYÜZ (MAIN) ---
 def main():
     st.title("🏗️ ArtikaPro Bulut")
     
@@ -26,7 +89,6 @@ def main():
     # 2. Teklif dosyalarını bul
     teklif_dosyalari = [f for f in files if "teklif" in f['name'].lower()]
 
-
     tab_malzeme, tab_projeler = st.tabs(["🧱 Malzeme Kütüphanesi", "📋 Proje Teklifleri"])
 
     # 1. SEKME: MALZEME
@@ -51,7 +113,7 @@ def main():
         else:
             st.info("Henüz yüklenmiş bir malzeme listesi yok.")
 
-    # 2. SEKME: PROJELER (Aynı kalıyor)
+    # 2. SEKME: PROJELER
     with tab_projeler:
         if teklif_dosyalari:
             isimler = [f['name'] for f in teklif_dosyalari]
@@ -75,3 +137,6 @@ def main():
                             st.dataframe(pd.read_excel(xls_proj, sayfa), use_container_width=True)
         else:
             st.info("Bu klasörde isminde 'Teklif' geçen dosya bulunamadı.")
+
+if __name__ == "__main__":
+    main()
