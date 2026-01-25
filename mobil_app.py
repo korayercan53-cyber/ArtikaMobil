@@ -6,77 +6,119 @@ from googleapiclient.http import MediaIoBaseDownload
 import io
 import os
 
-st.set_page_config(page_title="ArtikaPro Malzemeler", page_icon="🧱", layout="wide")
+st.set_page_config(page_title="ArtikaPro Mobil", page_icon="🏗️", layout="wide")
+
+# --- CSS ---
+st.markdown("""
+<style>
+    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
+    .stTabs [data-baseweb="tab"] { height: 50px; background-color: #f0f2f6; border-radius: 5px; }
+    .stTabs [aria-selected="true"] { background-color: #ff4b4b; color: white; }
+</style>
+""", unsafe_allow_html=True)
+
+# --- AYARLAR ---
+# BURAYA DRIVE KLASÖR ID'Nİ YAPIŞTIR (Hata almamak için tırnak içinde olsun)
+DRIVE_KLASOR_ID = "1mTx-wY_D2W1QGgAV7_xYJMu4UQ3cYybY" 
 
 # --- DRIVE BAĞLANTISI ---
 def get_drive_service():
     scopes = ['https://www.googleapis.com/auth/drive.readonly']
-    json_file = 'credentials.json'
-    if os.path.exists(json_file):
-        return build('drive', 'v3', credentials=Credentials.from_service_account_file(json_file, scopes=scopes))
-    try:
-        if "gcp_service_account" in st.secrets:
+    if "gcp_service_account" in st.secrets:
+        try:
             creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scopes)
             return build('drive', 'v3', credentials=creds)
-    except: pass
-    st.error("Kimlik doğrulama yapılamadı.")
+        except Exception as e:
+            st.error(f"Secrets hatası: {e}")
+            return None
+    st.error("Kimlik doğrulama anahtarı bulunamadı!")
     return None
 
-def load_material_list(service):
-    # İsmi 'Malzeme_Listesi.xlsx' olan dosyayı bul
-    query = "name = 'Malzeme_Listesi.xlsx' and trashed = false"
-    results = service.files().list(q=query, pageSize=1, fields="files(id, name)").execute()
-    files = results.get('files', [])
-    
-    if not files: return None
-    
-    file_id = files[0]['id']
-    request = service.files().get_media(fileId=file_id)
-    file_stream = io.BytesIO()
-    downloader = MediaIoBaseDownload(file_stream, request)
-    done = False
-    while done is False:
-        status, done = downloader.next_chunk()
-    file_stream.seek(0)
-    return pd.read_excel(file_stream)
+def list_files_in_folder(service, folder_id):
+    # ROBOT ARTIK DOĞRUDAN O KLASÖRE BAKACAK
+    query = f"'{folder_id}' in parents and mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' and trashed = false"
+    try:
+        results = service.files().list(q=query, pageSize=50, fields="files(id, name, modifiedTime)").execute()
+        return results.get('files', [])
+    except Exception as e:
+        st.error(f"Klasör okuma hatası: {e}. Lütfen Klasör ID'sinin doğru olduğundan ve Robotun o klasörde 'Viewer' yetkisi olduğundan emin olun.")
+        return []
+
+def load_excel_by_id(service, file_id):
+    try:
+        request = service.files().get_media(fileId=file_id)
+        file_stream = io.BytesIO()
+        downloader = MediaIoBaseDownload(file_stream, request)
+        done = False
+        while done is False:
+            status, done = downloader.next_chunk()
+        file_stream.seek(0)
+        return pd.ExcelFile(file_stream)
+    except Exception as e:
+        st.error(f"Dosya indirme hatası: {e}")
+        return None
 
 # --- ARAYÜZ ---
 def main():
-    st.title("🧱 ArtikaPro Malzeme Kütüphanesi")
+    st.title("🏗️ ArtikaPro Bulut")
     
     service = get_drive_service()
     if not service: return
+
+    # Belirtilen klasördeki dosyaları çek
+    files = list_files_in_folder(service, DRIVE_KLASOR_ID)
     
-    with st.spinner("Malzeme listesi güncelleniyor..."):
-        df = load_material_list(service)
-    
-    if df is None:
-        st.warning("Drive'da 'Malzeme_Listesi.xlsx' bulunamadı. Masaüstü uygulamasından bir malzeme güncelleyerek dosyanın oluşmasını sağlayın.")
+    if not files:
+        st.warning(f"Bu klasörde (ID: {DRIVE_KLASOR_ID}) hiç Excel dosyası bulunamadı.")
         return
 
-    # ARAMA MOTORU
-    search = st.text_input("Malzeme Ara (Ad veya Kod):", "")
+    # Dosyaları Ayrıştır (Büyük/Küçük harf duyarsız arama yapıyoruz artık)
+    malzeme_dosyasi = next((f for f in files if "malzeme_listesi" in f['name'].lower()), None)
     
-    if search:
-        # Büyük/küçük harf duyarsız arama
-        mask = df.apply(lambda x: x.astype(str).str.contains(search, case=False)).any(axis=1)
-        df_filtered = df[mask]
-    else:
-        df_filtered = df
+    # İçinde 'teklif' geçen tüm dosyaları bul
+    teklif_dosyalari = [f for f in files if "teklif" in f['name'].lower()]
 
-    st.write(f"Toplam **{len(df_filtered)}** malzeme bulundu.")
-    
-    # TABLO GÖSTERİMİ
-    st.dataframe(
-        df_filtered, 
-        use_container_width=True, 
-        hide_index=True,
-        column_config={
-            "Toplam Fiyat": st.column_config.NumberColumn(format="%.2f TL"),
-            "Malzeme Fiyatı": st.column_config.NumberColumn(format="%.2f"),
-            "İşçilik Fiyatı": st.column_config.NumberColumn(format="%.2f"),
-        }
-    )
+    tab_malzeme, tab_projeler = st.tabs(["🧱 Malzeme Kütüphanesi", "📋 Proje Teklifleri"])
+
+    # 1. SEKME
+    with tab_malzeme:
+        if malzeme_dosyasi:
+            st.caption(f"Dosya: {malzeme_dosyasi['name']}")
+            xls = load_excel_by_id(service, malzeme_dosyasi['id'])
+            if xls:
+                df = pd.read_excel(xls)
+                st.dataframe(df, use_container_width=True, hide_index=True)
+        else:
+            st.info("Malzeme listesi bulunamadı.")
+
+    # 2. SEKME
+    with tab_projeler:
+        if teklif_dosyalari:
+            # Seçim kutusu
+            isimler = [f['name'] for f in teklif_dosyalari]
+            secim = st.selectbox("İncelenecek Proje:", isimler)
+            
+            secilen_dosya = next(f for f in teklif_dosyalari if f['name'] == secim)
+            
+            if secilen_dosya:
+                with st.spinner("Proje açılıyor..."):
+                    xls_proj = load_excel_by_id(service, secilen_dosya['id'])
+                    if xls_proj:
+                        sheet_names = xls_proj.sheet_names
+                        
+                        # Varsa İcmal Tablosunu öne al
+                        if "İcmal Tablosu" in sheet_names:
+                            st.subheader("📊 İcmal Özeti")
+                            st.dataframe(pd.read_excel(xls_proj, "İcmal Tablosu"), use_container_width=True)
+                            st.divider()
+                        
+                        # Diğer Sayfalar
+                        detay_sayfalari = [s for s in sheet_names if s != "İcmal Tablosu"]
+                        if detay_sayfalari:
+                            sayfa = st.radio("Detay Sayfası:", detay_sayfalari, horizontal=True)
+                            st.dataframe(pd.read_excel(xls_proj, sayfa), use_container_width=True)
+        else:
+            st.info("Bu klasörde isminde 'Teklif' geçen dosya bulunamadı.")
 
 if __name__ == "__main__":
     main()
