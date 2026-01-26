@@ -4,68 +4,65 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 import io
+import math
 
 # ==========================================
 # AYARLAR
 # ==========================================
 DRIVE_KLASOR_ID = "1mTx-wY_D2W1QGgAV7_xYJMu4UQ3cYybY" 
-
-# Logo Linki (Daha güvenilir bir sunucudan)
 LOGO_URL = "https://cdn-icons-png.flaticon.com/512/2666/2666505.png"
 # ==========================================
 
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="ArtikaPro Bulut", page_icon="🏗️", layout="wide")
 
-# --- CSS TASARIMI (BOŞLUK SİLME EKLENDİ) ---
+# --- CSS TASARIMI ---
 st.markdown("""
 <style>
-    /* 1. SAYFA ÜSTÜNDEKİ BOŞLUĞU SİLME KODU */
+    /* Üst Boşlukları Silme */
     .block-container {
-        padding-top: 1rem !important; /* Üst boşluğu 1 birime düşür */
+        padding-top: 1rem !important;
         padding-bottom: 0rem !important;
         margin-top: 0rem !important;
     }
-    header {visibility: hidden;} /* Üstteki renkli ince çizgiyi gizle (isteğe bağlı) */
+    header {visibility: hidden;} 
 
     /* Sekme Tasarımı */
     .stTabs [data-baseweb="tab-list"] { gap: 8px; }
     .stTabs [data-baseweb="tab"] { height: 45px; background-color: #f1f5f9; border-radius: 8px; font-weight: 600; }
     .stTabs [aria-selected="true"] { background-color: #FF4B4B; color: white; }
 
-    /* KART TASARIMI */
+    /* NORMAL MALZEME KARTI */
     .material-card {
         background-color: #ffffff;
         border-radius: 12px;
         padding: 16px;
-        margin-bottom: 16px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        margin-bottom: 12px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         border: 1px solid #e2e8f0;
         border-left: 5px solid #FF4B4B;
         transition: transform 0.2s;
     }
     .material-card:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 10px 15px rgba(0,0,0,0.1);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 12px rgba(0,0,0,0.1);
     }
     .card-code { font-size: 11px; color: #94a3b8; font-weight: bold; letter-spacing: 0.5px; }
-    .card-title { font-size: 16px; font-weight: 700; color: #1e293b; margin: 5px 0; line-height: 1.3; }
+    .card-title { font-size: 16px; font-weight: 700; color: #1e293b; margin: 4px 0; line-height: 1.3; }
     
-    /* Detay Satırı */
     .card-details {
         display: flex;
         flex-wrap: wrap;
-        gap: 10px;
+        gap: 8px;
         margin-top: 8px;
         padding-top: 8px;
         border-top: 1px dashed #f1f5f9;
-        font-size: 12px;
+        font-size: 11px;
         color: #475569;
     }
     .detail-item { display: flex; align-items: center; gap: 4px; background-color: #f8fafc; padding: 2px 6px; border-radius: 4px; }
     .detail-val { font-weight: 700; color: #334155; }
 
-    /* Fiyat Alanı */
     .card-price { 
         font-size: 18px; 
         font-weight: 800; 
@@ -73,24 +70,46 @@ st.markdown("""
         display: flex; 
         align-items: center; 
         justify-content: space-between; 
-        margin-top: 12px; 
+        margin-top: 10px; 
         background-color: #fef2f2;
         padding: 8px;
         border-radius: 6px;
     }
     .card-unit { font-size: 12px; color: #64748b; font-weight: normal; }
-    .card-desc { font-size: 12px; color: #94a3b8; margin-top: 8px; font-style: italic;}
+    .card-desc { font-size: 11px; color: #94a3b8; margin-top: 6px; font-style: italic;}
+
+    /* BAŞLIK SATIRI KARTI (MAVİ) */
+    .header-card {
+        background-color: #e3f2fd; /* Açık Mavi */
+        color: #0d47a1; /* Koyu Mavi Yazı */
+        padding: 12px;
+        border-radius: 8px;
+        margin-bottom: 12px;
+        font-weight: 800;
+        font-size: 16px;
+        text-align: center;
+        border: 1px solid #bbdefb;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # --- YARDIMCI FONKSİYONLAR ---
 def tr_fmt(tutar):
-    if pd.isna(tutar): return "0,00"
+    """Sayıyı Türkçe formatına (1.234,56) çevirir"""
+    if pd.isna(tutar) or tutar == "": return "0,00"
     try:
         val = float(tutar)
+        # Binlik nokta, ondalık virgül
         return "{:,.2f}".format(val).replace(",", "X").replace(".", ",").replace("X", ".")
     except:
         return "0,00"
+
+def clean_str(val):
+    """None veya nan değerleri temizler"""
+    if pd.isna(val) or str(val).lower() == 'nan' or str(val).lower() == 'none':
+        return ""
+    return str(val)
 
 # --- DRIVE BAĞLANTISI ---
 @st.cache_resource
@@ -149,19 +168,13 @@ def main():
     service = get_drive_service()
     if not service: return
 
-    # --- LOGO VE BAŞLIK (KLASİK VE GARANTİ YÖNTEM) ---
-    # col1: Logo (Küçük), col2: Başlık (Geniş)
-    # gap="small" ile aradaki boşluğu azaltıyoruz.
+    # --- HEADER ALANI ---
     col1, col2 = st.columns([1, 10], gap="small") 
-    
     with col1:
-        # st.image Streamlit'in kendi fonksiyonudur, en garantisidir.
         st.image(LOGO_URL, width=70) 
-        
     with col2:
-        # Başlığı ve alt başlığı HTML ile basarak üstteki boşlukları sıfırlıyoruz
         st.markdown("""
-            <h1 style='margin-top: 0; padding-top: 0; font-size: 2.5rem;'>ArtikaPro Bulut</h1>
+            <h1 style='margin-top: 0; padding-top: 0; font-size: 2.2rem;'>ArtikaPro Bulut</h1>
             <p style='margin-top: -10px; color: gray;'>Saha ve Ofis Arasında Kesintisiz Veri Akışı</p>
         """, unsafe_allow_html=True)
 
@@ -211,42 +224,73 @@ def main():
                         cols = st.columns(3) 
                         for index, row in df.iterrows():
                             with cols[index % 3]:
-                                # Verileri Çek
-                                ad = row.get('Malzeme Adı', '-')
-                                kod = row.get('Kod', '')
+                                # --- VERİ HAZIRLIĞI ---
+                                ad = clean_str(row.get('Malzeme Adı', '-'))
+                                kod = clean_str(row.get('Kod', ''))
+                                birim = clean_str(row.get('Birim', ''))
+                                aciklama = clean_str(row.get('Açıklama', ''))
+                                
+                                # Fiyatları al (NaN ise 0 kabul et)
                                 f_malzeme = row.get('Malzeme Birim Fiyat', 0)
                                 f_iscilik = row.get('İşçilik Birim Fiyat', 0)
                                 f_toplam = row.get('Toplam Birim Fiyat', 0)
-                                birim = row.get('Birim', 'Adet')
                                 
-                                para_birimi = row.get('Para Birimi', 'TL')
-                                if pd.isna(para_birimi): para_birimi = "TL"
+                                # Para Birimi
+                                para_birimi = clean_str(row.get('Para Birimi', 'TL'))
+                                if not para_birimi: para_birimi = "TL"
 
-                                aciklama = row.get('Açıklama', '')
+                                # --- BAŞLIK SATIRI MI KONTROLÜ ---
+                                # Eğer fiyat yoksa VE birim yoksa, bu bir başlık satırıdır.
+                                is_header = False
+                                try:
+                                    price_check = float(f_toplam)
+                                except:
+                                    price_check = 0
+                                
+                                if price_check == 0 and birim == "":
+                                    is_header = True
 
-                                html_content = f"""
-                                <div class="material-card">
-                                    <div class="card-code">#{kod}</div>
-                                    <div class="card-title">{ad}</div>
-                                    <div class="card-details">
-                                        <div class="detail-item">🧱 Malz: <span class="detail-val">{tr_fmt(f_malzeme)} {para_birimi}</span></div>
-                                        <div class="detail-item">👷 İşç: <span class="detail-val">{tr_fmt(f_iscilik)} {para_birimi}</span></div>
+                                # --- KART OLUŞTURMA ---
+                                if is_header:
+                                    # MAVİ BAŞLIK KARTI (SADE)
+                                    st.markdown(f"""
+                                    <div class="header-card">
+                                        {ad}
                                     </div>
-                                    <div class="card-price">
-                                        {tr_fmt(f_toplam)} {para_birimi}
-                                        <span class="card-unit">/ {birim}</span>
+                                    """, unsafe_allow_html=True)
+                                else:
+                                    # NORMAL MALZEME KARTI
+                                    # Birim varsa başına '/' ekle, yoksa boş bırak
+                                    birim_str = f"/ {birim}" if birim else ""
+                                    # Kod varsa göster
+                                    kod_html = f'<div class="card-code">#{kod}</div>' if kod else ""
+                                    
+                                    html_content = f"""
+                                    <div class="material-card">
+                                        {kod_html}
+                                        <div class="card-title">{ad}</div>
+                                        
+                                        <div class="card-details">
+                                            <div class="detail-item">🧱 Malz: <span class="detail-val">{tr_fmt(f_malzeme)} {para_birimi}</span></div>
+                                            <div class="detail-item">👷 İşç: <span class="detail-val">{tr_fmt(f_iscilik)} {para_birimi}</span></div>
+                                        </div>
+                                        
+                                        <div class="card-price">
+                                            {tr_fmt(f_toplam)} {para_birimi}
+                                            <span class="card-unit">{birim_str}</span>
+                                        </div>
+                                        
+                                        <div class="card-desc">{aciklama}</div>
                                     </div>
-                                    <div class="card-desc">{aciklama if pd.notna(aciklama) else ''}</div>
-                                </div>
-                                """
-                                st.markdown(html_content, unsafe_allow_html=True)
+                                    """
+                                    st.markdown(html_content, unsafe_allow_html=True)
                 else:
                     st.dataframe(df, use_container_width=True, hide_index=True)
         else:
             st.info("Henüz yüklenmiş bir malzeme listesi yok.")
 
     # ----------------------------------------
-    # SEKME 2: PROJELER
+    # SEKME 2: PROJELER (AYNI)
     # ----------------------------------------
     with tab_projeler:
         if teklif_dosyalari:
