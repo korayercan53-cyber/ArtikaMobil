@@ -1,5 +1,7 @@
 import streamlit as st
 import pandas as pd
+import requests
+from io import BytesIO
 
 # --- 1. SAYFA AYARLARI ---
 st.set_page_config(
@@ -97,21 +99,33 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 3. VERİ YÜKLEME (GOOGLE DRIVE'DAN CANLI) ---
-@st.cache_data(ttl=600) # Veriyi 10 dakikada bir yeniler (Hız için)
+# --- 3. VERİ YÜKLEME (GÜNCELLENMİŞ VE SAĞLAMLAŞTIRILMIŞ) ---
+@st.cache_data(ttl=600)
 def load_data():
     # BURAYA O UZUN DRIVE ID'Yİ YAPIŞTIR
-    DRIVE_FILE_ID = "1mTx-wY_D2W1QGgAV7_xYJMu4UQ3cYybY" 
+    DRIVE_FILE_ID = '1mTx-wY_D2W1QGgAV7_xYJMu4UQ3cYybY' # Senin ID'n
     
-    # Drive indirme bağlantısını oluşturuyoruz
-    url = f'https://drive.google.com/uc?id={DRIVE_FILE_ID}'
+    # İndirme bağlantısı
+    url = f'https://drive.google.com/uc?id={DRIVE_FILE_ID}&export=download'
     
     try:
-        # Doğrudan internetten okuyoruz
-        df = pd.read_excel(url)
+        # 1. Dosyayı indir
+        response = requests.get(url)
+        
+        # 2. Eğer dosya bulunamazsa veya izin yoksa hata fırlatır
+        if response.status_code != 200:
+            st.error(f"Dosyaya erişilemedi! Hata Kodu: {response.status_code}")
+            return None
+            
+        # 3. İnen veriyi Excel olarak oku (Motoru elle belirtiyoruz: openpyxl)
+        data = BytesIO(response.content)
+        df = pd.read_excel(data, engine='openpyxl')
+        
         return df
+        
     except Exception as e:
-        st.error(f"Veri Drive'dan çekilemedi: {e}")
+        st.error(f"HATA: Dosya okunamadı.\nSebep: {e}")
+        st.warning("Lütfen Drive dosyasının 'Bağlantıya sahip olan herkes' olarak ayarlandığından emin olun.")
         return None
 
 df = load_data()
