@@ -4,14 +4,21 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 import io
-import os
+
+# ==========================================
+# AYARLAR (Burayı Kendi Bilgilerinle Doldur)
+# ==========================================
+# 1. Drive Klasör ID'si
+DRIVE_KLASOR_ID = "1mTx-wY_D2W1QGgAV7_xYJMu4UQ3cYybY" 
+
+# 2. Şirket Logosu (Varsayılan olarak inşaat ikonu koydum. Kendi logo linkini buraya yapıştırabilirsin)
+LOGO_URL = "https://cdn-icons-png.flaticon.com/512/2666/2666505.png"
+# ==========================================
 
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="ArtikaPro Bulut", page_icon="🏗️", layout="wide")
 
-# ==========================================
-# 1. TASARIM KODLARI (Güncellendi)
-# ==========================================
+# --- TASARIM (CSS) ---
 st.markdown("""
 <style>
     /* Sekme Tasarımı */
@@ -37,22 +44,23 @@ st.markdown("""
     .card-code { font-size: 11px; color: #94a3b8; font-weight: bold; letter-spacing: 0.5px; }
     .card-title { font-size: 16px; font-weight: 700; color: #1e293b; margin: 5px 0; line-height: 1.3; }
     
-    /* Yeni Detay Satırı (Malzeme/İşçilik) */
+    /* Detay Satırı (Malzeme/İşçilik) */
     .card-details {
         display: flex;
-        gap: 15px;
+        flex-wrap: wrap;
+        gap: 10px;
         margin-top: 8px;
         padding-top: 8px;
         border-top: 1px dashed #f1f5f9;
         font-size: 12px;
         color: #475569;
     }
-    .detail-item { display: flex; align-items: center; gap: 4px; }
+    .detail-item { display: flex; align-items: center; gap: 4px; background-color: #f8fafc; padding: 2px 6px; border-radius: 4px; }
     .detail-val { font-weight: 700; color: #334155; }
 
     /* Toplam Fiyat Alanı */
     .card-price { 
-        font-size: 20px; 
+        font-size: 18px; 
         font-weight: 800; 
         color: #dc2626; 
         display: flex; 
@@ -68,11 +76,16 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ==========================================
-# AYARLAR (Senin ID'n)
-# ==========================================
-DRIVE_KLASOR_ID = "1mTx-wY_D2W1QGgAV7_xYJMu4UQ3cYybY" 
-# ==========================================
+# --- YARDIMCI FONKSİYONLAR ---
+def tr_fmt(tutar):
+    """Sayıyı Türkçe para formatına çevirir (1.234,56)"""
+    if pd.isna(tutar): return "0,00"
+    try:
+        val = float(tutar)
+        # Binlik ayracı virgül, ondalık nokta yap (standart) sonra değiştir
+        return "{:,.2f}".format(val).replace(",", "X").replace(".", ",").replace("X", ".")
+    except:
+        return "0,00"
 
 # --- DRIVE BAĞLANTISI ---
 @st.cache_resource
@@ -126,19 +139,24 @@ def load_excel_file_obj(_service, file_id):
         st.error(f"Dosya indirme hatası: {e}")
         return None
 
-
-# --- ARAYÜZ (MAIN) ---
+# --- ANA PROGRAM ---
 def main():
-    col_logo, col_title = st.columns([1, 5])
-    with col_logo:
-        st.image("https://cdn-icons-png.flaticon.com/512/2666/2666505.png", width=60)
-    with col_title:
-        st.title("ArtikaPro Bulut")
-        st.caption("Saha ve Ofis Arasında Kesintisiz Veri Akışı")
-    
     service = get_drive_service()
     if not service: return
 
+    # --- HEADER / LOGO ALANI (Yeni) ---
+    # Logoyu sola, başlığı sağa yerleştiriyoruz
+    col_logo, col_title = st.columns([1, 6])
+    
+    with col_logo:
+        # Logoyu buraya basıyoruz
+        st.image(LOGO_URL, width=80) 
+        
+    with col_title:
+        st.title("ArtikaPro Bulut")
+        st.caption("Saha ve Ofis Arasında Kesintisiz Veri Akışı")
+
+    # --- DOSYALARI ÇEK ---
     with st.spinner("Dosyalar taranıyor..."):
         files = list_files_in_folder(service, DRIVE_KLASOR_ID)
     
@@ -155,15 +173,18 @@ def main():
     else:
         malzeme_dosyasi = None
 
+    # --- SEKMELER ---
     tab_malzeme, tab_projeler = st.tabs(["🧱 Malzeme Kütüphanesi", "📋 Proje Teklifleri"])
 
-    # --- SEKME 1: MALZEME (DÜZELTİLMİŞ & TÜRKÇE FORMATLI) ---
+    # ----------------------------------------
+    # SEKME 1: MALZEME (Kart Görünümü)
+    # ----------------------------------------
     with tab_malzeme:
         if malzeme_dosyasi:
             tarih_ham = malzeme_dosyasi.get('modifiedTime', '')
             tarih_guzel = tarih_ham[:10] if tarih_ham else ""
             
-            st.info(f"📂 Liste: **{malzeme_dosyasi['name']}** (Tarih: {tarih_guzel})")
+            st.info(f"📂 Liste: **{malzeme_dosyasi['name']}** (Güncelleme: {tarih_guzel})")
             
             df = load_excel_as_df(service, malzeme_dosyasi['id'])
             
@@ -179,35 +200,23 @@ def main():
                         st.warning("Sonuç bulunamadı.")
                     else:
                         cols = st.columns(3) 
-                        
-                        # TÜRKÇE PARA FORMATI FONKSİYONU
-                        def tr_fmt(tutar):
-                            if pd.isna(tutar): return "0,00"
-                            # Önce float olduğundan emin olalım
-                            try: tutar = float(tutar)
-                            except: return "0,00"
-                            # İngiliz formatı (1,234.56) -> Türkçe formatı (1.234,56) çevrimi
-                            return f"{tutar:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
                         for index, row in df.iterrows():
                             with cols[index % 3]:
+                                # Verileri Çek
                                 ad = row.get('Malzeme Adı', '-')
                                 kod = row.get('Kod', '')
-                                
-                                # Verileri Çek
                                 f_malzeme = row.get('Malzeme Birim Fiyat', 0)
                                 f_iscilik = row.get('İşçilik Birim Fiyat', 0)
                                 f_toplam = row.get('Toplam Birim Fiyat', 0)
                                 birim = row.get('Birim', 'Adet')
                                 
-                                # Para Birimi
                                 para_birimi = row.get('Para Birimi', 'TL')
                                 if pd.isna(para_birimi): para_birimi = "TL"
 
                                 aciklama = row.get('Açıklama', '')
 
-                                # HTML KART (Düzeltilmiş)
-                                st.markdown(f"""
+                                # HTML KART OLUŞTUR
+                                card_html = f"""
                                 <div class="material-card">
                                     <div class="card-code">#{kod}</div>
                                     <div class="card-title">{ad}</div>
@@ -224,13 +233,16 @@ def main():
                                     
                                     <div class="card-desc">{aciklama if pd.notna(aciklama) else ''}</div>
                                 </div>
-                                """, unsafe_allow_html=True)
+                                """
+                                st.markdown(card_html, unsafe_allow_html=True)
                 else:
                     st.dataframe(df, use_container_width=True, hide_index=True)
         else:
             st.info("Henüz yüklenmiş bir malzeme listesi yok.")
 
-    # --- SEKME 2: PROJELER (DEĞİŞMEDİ) ---
+    # ----------------------------------------
+    # SEKME 2: PROJELER
+    # ----------------------------------------
     with tab_projeler:
         if teklif_dosyalari:
             isimler = [f['name'] for f in teklif_dosyalari]
