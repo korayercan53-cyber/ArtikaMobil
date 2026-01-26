@@ -4,6 +4,7 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 import io
+import numpy as np
 
 # ==========================================
 # AYARLAR
@@ -72,8 +73,10 @@ st.markdown("""
 def clean_text(text):
     """None, nan temizler."""
     if text is None: return ""
+    # Pandas NaN kontrolü
+    if pd.isna(text): return ""
     s = str(text).strip()
-    if s.lower() in ['nan', 'none', '', 'null']: return ""
+    if s.lower() in ['nan', 'none', '', 'null', 'nat']: return ""
     return s
 
 def format_para_str(tutar):
@@ -86,11 +89,7 @@ def format_para_str(tutar):
         return "0,00"
 
 def apply_table_style(df):
-    """
-    TABLOLAR İÇİN ÖZEL FORMATLAYICI
-    Veriyi sayı (float) olarak tutar ama gösterirken Türkçe formatlar.
-    Bu sayede SAĞA YASLI kalır.
-    """
+    """TABLOLAR İÇİN ÖZEL FORMATLAYICI VE SAĞA YASLAYICI"""
     df = df.dropna(how='all') # Boş satırları sil
     
     num_cols = df.select_dtypes(include=['float64', 'int64']).columns
@@ -118,12 +117,8 @@ def get_drive_service():
     st.error("Kimlik doğrulama anahtarı bulunamadı!")
     return None
 
-# --- DÜZELTME BURADA: Cache eklendi ---
-# ttl=600 -> 10 dakika boyunca dosya listesini hafızada tutar.
-# Böylece her tıklamada tekrar Drive'a gitmez, sayfa atlamaz.
 @st.cache_data(ttl=600)
 def list_files_in_folder(_service, folder_id): 
-    # Not: _service parametresinin başına alt çizgi koyduk ki Streamlit bunu hashlemesin (Hız için)
     query = f"'{folder_id}' in parents and mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' and trashed = false"
     try:
         results = _service.files().list(q=query, pageSize=50, fields="files(id, name, modifiedTime)").execute()
@@ -142,15 +137,21 @@ def load_excel_as_df(_service, file_id):
         while done is False:
             status, done = downloader.next_chunk()
         file_stream.seek(0)
-        return pd.read_excel(file_stream)
+        
+        df = pd.read_excel(file_stream)
+        df.dropna(how='all', inplace=True) # Boş satırları sil
+        return df
     except Exception as e:
         st.error(f"Dosya indirme hatası: {e}")
         return None
 
-# --- DÜZELTME: Bu fonksiyon da cache'lendi ---
-# Proje dosyasını da hafızaya alıyoruz, sekmeler arası geçiş ışık hızında olacak.
+# --- DÜZELTME: ARTIK BYTES DÖNDÜRÜYOR (Serialize Edilebilir) ---
 @st.cache_data(ttl=600)
-def load_excel_file_obj(_service, file_id):
+def download_excel_bytes(_service, file_id):
+    """
+    Dosyayı sadece indirir ve HAM VERİ (Bytes) olarak döndürür.
+    Bu sayede Cache hatası vermez.
+    """
     try:
         request = _service.files().get_media(fileId=file_id)
         file_stream = io.BytesIO()
@@ -158,8 +159,7 @@ def load_excel_file_obj(_service, file_id):
         done = False
         while done is False:
             status, done = downloader.next_chunk()
-        file_stream.seek(0)
-        return pd.ExcelFile(file_stream)
+        return file_stream.getvalue() # Byte döndür
     except Exception as e:
         st.error(f"Dosya indirme hatası: {e}")
         return None
@@ -181,9 +181,8 @@ def main():
             </div>
         """, unsafe_allow_html=True)
 
-    # --- DOSYALAR (Artık Cache kullanıyor, çok hızlı) ---
+    # --- DOSYALAR ---
     with st.spinner("Veriler yükleniyor..."):
-        # Service objesi cache lenemez olduğu için parametre ismini değiştirdik
         files = list_files_in_folder(service, DRIVE_KLASOR_ID)
     
     if not files:
@@ -282,7 +281,7 @@ def main():
             st.info("Malzeme listesi yok.")
 
     # ----------------------------------------
-    # SEKME 2: PROJELER (CACHE VE HIZ)
+    # SEKME 2: PROJELER (CACHE DÜZELTİLDİ)
     # ----------------------------------------
     with tab_projeler:
         if teklif_dosyalari:
@@ -293,10 +292,13 @@ def main():
             
             if secilen_dosya:
                 with st.spinner("Proje detayları yükleniyor..."):
-                    # Artık önbellekten geliyor, çok hızlı
-                    xls_proj = load_excel_file_obj(service, secilen_dosya['id'])
+                    # 1. Byte Olarak İndir (Cache'den gelir)
+                    file_bytes = download_excel_bytes(service, secilen_dosya['id'])
                     
-                    if xls_proj:
+                    if file_bytes:
+                        # 2. Excel Objesine Çevir (Hızlıdır, cache gerekmez)
+                        xls_proj = pd.ExcelFile(io.BytesIO(file_bytes))
+                        
                         sheet_names = xls_proj.sheet_names
                         if "İcmal Tablosu" in sheet_names:
                             st.subheader("📊 İcmal Özeti")
@@ -306,7 +308,6 @@ def main():
                         
                         detay_sayfalari = [s for s in sheet_names if s != "İcmal Tablosu"]
                         if detay_sayfalari:
-                            # Pills için key atadık ki Streamlit durumu karıştırmasın
                             sayfa = st.pills("Detay Sayfası:", detay_sayfalari, default=detay_sayfalari[0], key="pills_detay")
                             if sayfa:
                                 df_detay = pd.read_excel(xls_proj, sayfa)
