@@ -93,14 +93,20 @@ def tr_fmt(tutar):
         return "0,00"
 
 def df_para_formatla(df):
-    """Tablodaki sayısal sütunları 3.456,45 formatına çevirir"""
-    # Sadece sayısal (float/int) sütunları seç
+    """
+    Tablodaki sayısal sütunları 3.456,45 formatına çevirir 
+    VE Sağa Yaslar.
+    """
+    # 1. Sayısal sütunları tespit et
     sayisal_sutunlar = df.select_dtypes(include=['float64', 'int64']).columns
     
+    # 2. Formatı uygula (String'e dönüşür)
     for col in sayisal_sutunlar:
-        # Her hücreyi formatla
         df[col] = df[col].apply(lambda x: "{:,.2f}".format(x).replace(",", "X").replace(".", ",").replace("X", ".") if pd.notnull(x) else "")
-    return df
+    
+    # 3. SAĞA YASLAMA (Pandas Styler kullanarak)
+    # Bu işlem DataFrame'i 'Styler' objesine çevirir.
+    return df.style.set_properties(subset=sayisal_sutunlar, **{'text-align': 'right'})
 
 # --- DRIVE BAĞLANTISI ---
 @st.cache_resource
@@ -252,7 +258,7 @@ def main():
             st.info("Henüz yüklenmiş bir malzeme listesi yok.")
 
     # ----------------------------------------
-    # SEKME 2: PROJELER (GÜNCELLENDİ: FİYAT FORMATI EKLENDİ)
+    # SEKME 2: PROJELER (GÜNCELLENDİ)
     # ----------------------------------------
     with tab_projeler:
         if teklif_dosyalari:
@@ -273,10 +279,10 @@ def main():
                             st.subheader("📊 İcmal Özeti")
                             df_icmal = pd.read_excel(xls_proj, "İcmal Tablosu")
                             
-                            # BURASI DEĞİŞTİ: Formatlama Fonksiyonunu Çağırıyoruz
-                            df_icmal = df_para_formatla(df_icmal)
+                            # Formatla ve Sağa Yasla
+                            styled_icmal = df_para_formatla(df_icmal)
                             
-                            st.dataframe(df_icmal, use_container_width=True)
+                            st.dataframe(styled_icmal, use_container_width=True)
                             st.divider()
                         
                         # --- DETAY SAYFALARI ---
@@ -286,10 +292,10 @@ def main():
                             if sayfa:
                                 df_detay = pd.read_excel(xls_proj, sayfa)
                                 
-                                # BURASI DEĞİŞTİ: Formatlama Fonksiyonunu Çağırıyoruz
-                                df_detay = df_para_formatla(df_detay)
+                                # Formatla ve Sağa Yasla
+                                styled_detay = df_para_formatla(df_detay)
                                 
-                                st.dataframe(df_detay, use_container_width=True)
+                                st.dataframe(styled_detay, use_container_width=True)
         else:
             st.info("Bu klasörde isminde 'Teklif' geçen dosya bulunamadı.")
 
