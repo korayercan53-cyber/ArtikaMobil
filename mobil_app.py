@@ -10,20 +10,24 @@ import io
 # ==========================================
 DRIVE_KLASOR_ID = "1mTx-wY_D2W1QGgAV7_xYJMu4UQ3cYybY" 
 
-# Logo Linki (Daha basit ve net bir ikon)
+# Logo Linki (Daha güvenilir bir sunucudan)
 LOGO_URL = "https://cdn-icons-png.flaticon.com/512/2666/2666505.png"
 # ==========================================
 
-# --- SAYFA AYARLARI (Sol üstteki ikonu buradan değiştiriyoruz) ---
-st.set_page_config(
-    page_title="ArtikaPro Bulut", 
-    page_icon="🏗️", # Burası tarayıcı sekmesindeki ikondur.
-    layout="wide"
-)
+# --- SAYFA AYARLARI ---
+st.set_page_config(page_title="ArtikaPro Bulut", page_icon="🏗️", layout="wide")
 
-# --- CSS TASARIMI ---
+# --- CSS TASARIMI (BOŞLUK SİLME EKLENDİ) ---
 st.markdown("""
 <style>
+    /* 1. SAYFA ÜSTÜNDEKİ BOŞLUĞU SİLME KODU */
+    .block-container {
+        padding-top: 1rem !important; /* Üst boşluğu 1 birime düşür */
+        padding-bottom: 0rem !important;
+        margin-top: 0rem !important;
+    }
+    header {visibility: hidden;} /* Üstteki renkli ince çizgiyi gizle (isteğe bağlı) */
+
     /* Sekme Tasarımı */
     .stTabs [data-baseweb="tab-list"] { gap: 8px; }
     .stTabs [data-baseweb="tab"] { height: 45px; background-color: #f1f5f9; border-radius: 8px; font-weight: 600; }
@@ -76,37 +80,11 @@ st.markdown("""
     }
     .card-unit { font-size: 12px; color: #64748b; font-weight: normal; }
     .card-desc { font-size: 12px; color: #94a3b8; margin-top: 8px; font-style: italic;}
-
-    /* HEADER ALANI İÇİN ÖZEL CSS */
-    .custom-header {
-        display: flex;
-        align-items: center;
-        margin-bottom: 20px;
-        padding-bottom: 20px;
-        border-bottom: 2px solid #f0f2f6;
-    }
-    .header-logo {
-        width: 80px;
-        height: 80px;
-        margin-right: 20px;
-    }
-    .header-title h1 {
-        margin: 0;
-        font-size: 36px;
-        color: #0e1117;
-        font-weight: 700;
-    }
-    .header-title p {
-        margin: 0;
-        font-size: 16px;
-        color: #808495;
-    }
 </style>
 """, unsafe_allow_html=True)
 
 # --- YARDIMCI FONKSİYONLAR ---
 def tr_fmt(tutar):
-    """Sayıyı Türkçe formatına çevirir (1.234,56)"""
     if pd.isna(tutar): return "0,00"
     try:
         val = float(tutar)
@@ -171,17 +149,21 @@ def main():
     service = get_drive_service()
     if not service: return
 
-    # --- LOGO VE BAŞLIK (HTML Header Yöntemi) ---
-    # st.title yerine kendi HTML bloğumuzu basıyoruz.
-    st.markdown(f"""
-    <div class="custom-header">
-        <img src="{LOGO_URL}" class="header-logo">
-        <div class="header-title">
-            <h1>ArtikaPro Bulut</h1>
-            <p>Saha ve Ofis Arasında Kesintisiz Veri Akışı</p>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    # --- LOGO VE BAŞLIK (KLASİK VE GARANTİ YÖNTEM) ---
+    # col1: Logo (Küçük), col2: Başlık (Geniş)
+    # gap="small" ile aradaki boşluğu azaltıyoruz.
+    col1, col2 = st.columns([1, 10], gap="small") 
+    
+    with col1:
+        # st.image Streamlit'in kendi fonksiyonudur, en garantisidir.
+        st.image(LOGO_URL, width=70) 
+        
+    with col2:
+        # Başlığı ve alt başlığı HTML ile basarak üstteki boşlukları sıfırlıyoruz
+        st.markdown("""
+            <h1 style='margin-top: 0; padding-top: 0; font-size: 2.5rem;'>ArtikaPro Bulut</h1>
+            <p style='margin-top: -10px; color: gray;'>Saha ve Ofis Arasında Kesintisiz Veri Akışı</p>
+        """, unsafe_allow_html=True)
 
     # --- DOSYALARI ÇEK ---
     with st.spinner("Dosyalar taranıyor..."):
@@ -242,7 +224,6 @@ def main():
 
                                 aciklama = row.get('Açıklama', '')
 
-                                # HTML KART OLUŞTUR
                                 html_content = f"""
                                 <div class="material-card">
                                     <div class="card-code">#{kod}</div>
@@ -265,7 +246,7 @@ def main():
             st.info("Henüz yüklenmiş bir malzeme listesi yok.")
 
     # ----------------------------------------
-    # SEKME 2: PROJELER (DEĞİŞMEDİ)
+    # SEKME 2: PROJELER
     # ----------------------------------------
     with tab_projeler:
         if teklif_dosyalari:
