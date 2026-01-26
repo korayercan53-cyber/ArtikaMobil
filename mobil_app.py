@@ -19,51 +19,31 @@ st.set_page_config(page_title="ArtikaPro Bulut", page_icon="🏗️", layout="wi
 # --- CSS TASARIMI ---
 st.markdown("""
 <style>
-    /* Üst Boşluğu Kaldır */
-    .block-container {
-        padding-top: 2rem !important; 
-        margin-top: 0rem !important;
-    }
+    .block-container { padding-top: 2rem !important; margin-top: 0rem !important; }
     header {visibility: hidden;} 
-
-    /* Sekme Tasarımı */
     .stTabs [data-baseweb="tab-list"] { gap: 8px; }
     .stTabs [data-baseweb="tab"] { height: 45px; background-color: #f1f5f9; border-radius: 8px; font-weight: 600; }
     .stTabs [aria-selected="true"] { background-color: #FF4B4B; color: white; }
 
-    /* MALZEME KARTI */
+    /* KART TASARIMI */
     .material-card {
-        background-color: #ffffff;
-        border-radius: 12px;
-        padding: 16px;
-        margin-bottom: 16px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-        border: 1px solid #e2e8f0;
-        border-left: 5px solid #FF4B4B;
+        background-color: #ffffff; border-radius: 12px; padding: 16px; margin-bottom: 16px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; border-left: 5px solid #FF4B4B;
     }
     .card-code { font-size: 11px; color: #94a3b8; font-weight: bold; margin-bottom: 4px; }
     .card-title { font-size: 16px; font-weight: 700; color: #1e293b; margin-bottom: 10px; line-height: 1.4; }
-    
-    .card-details {
-        display: flex; gap: 8px; padding-top: 8px; border-top: 1px dashed #f1f5f9;
-        font-size: 11px; color: #475569;
-    }
+    .card-details { display: flex; gap: 8px; padding-top: 8px; border-top: 1px dashed #f1f5f9; font-size: 11px; color: #475569; }
     .detail-item { background-color: #f8fafc; padding: 4px 8px; border-radius: 4px; }
     .detail-val { font-weight: 700; color: #334155; }
-
     .card-price { 
-        font-size: 18px; font-weight: 800; color: #dc2626; 
-        display: flex; justify-content: space-between; align-items: center;
-        margin-top: 12px; background-color: #fef2f2; padding: 10px; border-radius: 8px;
+        font-size: 18px; font-weight: 800; color: #dc2626; display: flex; justify-content: space-between; 
+        align-items: center; margin-top: 12px; background-color: #fef2f2; padding: 10px; border-radius: 8px;
     }
     .card-unit { font-size: 12px; color: #64748b; font-weight: normal; }
     .card-desc { font-size: 11px; color: #94a3b8; margin-top: 8px; font-style: italic;}
-
-    /* MAVİ BAŞLIK KARTI */
     .header-card {
-        background-color: #e3f2fd; color: #1565c0; padding: 15px;
-        border-radius: 8px; margin-bottom: 20px; font-weight: 800;
-        font-size: 18px; text-align: center; border: 1px solid #bbdefb;
+        background-color: #e3f2fd; color: #1565c0; padding: 15px; border-radius: 8px; margin-bottom: 20px;
+        font-weight: 800; font-size: 18px; text-align: center; border: 1px solid #bbdefb;
         text-transform: uppercase; letter-spacing: 1px;
     }
 </style>
@@ -71,16 +51,13 @@ st.markdown("""
 
 # --- YARDIMCI FONKSİYONLAR ---
 def clean_text(text):
-    """None, nan temizler."""
     if text is None: return ""
-    # Pandas NaN kontrolü
     if pd.isna(text): return ""
     s = str(text).strip()
     if s.lower() in ['nan', 'none', '', 'null', 'nat']: return ""
     return s
 
 def format_para_str(tutar):
-    """Sadece KARTLAR için string dönüşümü (1.234,56)"""
     if pd.isna(tutar): return "0,00"
     try:
         val = float(tutar)
@@ -89,9 +66,7 @@ def format_para_str(tutar):
         return "0,00"
 
 def apply_table_style(df):
-    """TABLOLAR İÇİN ÖZEL FORMATLAYICI VE SAĞA YASLAYICI"""
-    df = df.dropna(how='all') # Boş satırları sil
-    
+    df = df.dropna(how='all')
     num_cols = df.select_dtypes(include=['float64', 'int64']).columns
     
     def tr_fmt_func(x):
@@ -100,7 +75,6 @@ def apply_table_style(df):
 
     styler = df.style.format({col: tr_fmt_func for col in num_cols})
     styler = styler.set_properties(subset=num_cols, **{'text-align': 'right'})
-    
     return styler
 
 # --- DRIVE BAĞLANTISI ---
@@ -117,6 +91,7 @@ def get_drive_service():
     st.error("Kimlik doğrulama anahtarı bulunamadı!")
     return None
 
+# SADECE DOSYA LİSTESİNİ CACHE'LİYORUZ (Return: List of Dict -> Güvenli)
 @st.cache_data(ttl=600)
 def list_files_in_folder(_service, folder_id): 
     query = f"'{folder_id}' in parents and mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' and trashed = false"
@@ -127,39 +102,33 @@ def list_files_in_folder(_service, folder_id):
         st.error(f"Klasör okuma hatası: {e}")
         return []
 
-@st.cache_data(ttl=600)
-def load_excel_as_df(_service, file_id):
+# --- DİKKAT: CACHE KALDIRILDI ---
+# Bu fonksiyonlar hata vermesin diye cache kullanmadan her seferinde indirecek.
+def load_excel_as_df(service, file_id):
     try:
-        request = _service.files().get_media(fileId=file_id)
+        request = service.files().get_media(fileId=file_id)
         file_stream = io.BytesIO()
         downloader = MediaIoBaseDownload(file_stream, request)
         done = False
         while done is False:
             status, done = downloader.next_chunk()
         file_stream.seek(0)
-        
         df = pd.read_excel(file_stream)
-        df.dropna(how='all', inplace=True) # Boş satırları sil
+        df.dropna(how='all', inplace=True)
         return df
     except Exception as e:
         st.error(f"Dosya indirme hatası: {e}")
         return None
 
-# --- DÜZELTME: ARTIK BYTES DÖNDÜRÜYOR (Serialize Edilebilir) ---
-@st.cache_data(ttl=600)
-def download_excel_bytes(_service, file_id):
-    """
-    Dosyayı sadece indirir ve HAM VERİ (Bytes) olarak döndürür.
-    Bu sayede Cache hatası vermez.
-    """
+def download_excel_bytes(service, file_id):
     try:
-        request = _service.files().get_media(fileId=file_id)
+        request = service.files().get_media(fileId=file_id)
         file_stream = io.BytesIO()
         downloader = MediaIoBaseDownload(file_stream, request)
         done = False
         while done is False:
             status, done = downloader.next_chunk()
-        return file_stream.getvalue() # Byte döndür
+        return file_stream.getvalue()
     except Exception as e:
         st.error(f"Dosya indirme hatası: {e}")
         return None
@@ -168,6 +137,14 @@ def download_excel_bytes(_service, file_id):
 def main():
     service = get_drive_service()
     if not service: return
+
+    # Sidebar'a Temizleme Butonu
+    with st.sidebar:
+        st.image(LOGO_URL, width=50)
+        st.write("---")
+        if st.button("🔄 Önbelleği Temizle"):
+            st.cache_data.clear()
+            st.rerun()
 
     # --- HEADER ---
     col1, col2 = st.columns([1, 10], gap="small")
@@ -182,7 +159,7 @@ def main():
         """, unsafe_allow_html=True)
 
     # --- DOSYALAR ---
-    with st.spinner("Veriler yükleniyor..."):
+    with st.spinner("Dosyalar taranıyor..."):
         files = list_files_in_folder(service, DRIVE_KLASOR_ID)
     
     if not files:
@@ -209,6 +186,7 @@ def main():
             tarih_guzel = tarih_ham[:10] if tarih_ham else ""
             st.info(f"📂 Liste: **{malzeme_dosyasi['name']}** ({tarih_guzel})")
             
+            # Cache kapalı, doğrudan indiriyor
             df = load_excel_as_df(service, malzeme_dosyasi['id'])
             
             if df is not None:
@@ -281,7 +259,7 @@ def main():
             st.info("Malzeme listesi yok.")
 
     # ----------------------------------------
-    # SEKME 2: PROJELER (CACHE DÜZELTİLDİ)
+    # SEKME 2: PROJELER
     # ----------------------------------------
     with tab_projeler:
         if teklif_dosyalari:
@@ -292,11 +270,10 @@ def main():
             
             if secilen_dosya:
                 with st.spinner("Proje detayları yükleniyor..."):
-                    # 1. Byte Olarak İndir (Cache'den gelir)
+                    # Cache kapalı, byte olarak indiriyoruz
                     file_bytes = download_excel_bytes(service, secilen_dosya['id'])
                     
                     if file_bytes:
-                        # 2. Excel Objesine Çevir (Hızlıdır, cache gerekmez)
                         xls_proj = pd.ExcelFile(io.BytesIO(file_bytes))
                         
                         sheet_names = xls_proj.sheet_names
