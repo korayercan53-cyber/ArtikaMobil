@@ -12,13 +12,13 @@ DRIVE_KLASOR_ID = "1mTx-wY_D2W1QGgAV7_xYJMu4UQ3cYybY"
 LOGO_URL = "https://cdn-icons-png.flaticon.com/512/2666/2666505.png"
 # ==========================================
 
-# --- SAYFA AYARLARI ---
+# --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="ArtikaPro Bulut", page_icon="🏗️", layout="wide")
 
 # --- CSS TASARIMI ---
 st.markdown("""
 <style>
-    /* Üst Boşluk Ayarı */
+    /* Üst Boşluğu Kaldır */
     .block-container {
         padding-top: 2rem !important; 
         margin-top: 0rem !important;
@@ -30,7 +30,7 @@ st.markdown("""
     .stTabs [data-baseweb="tab"] { height: 45px; background-color: #f1f5f9; border-radius: 8px; font-weight: 600; }
     .stTabs [aria-selected="true"] { background-color: #FF4B4B; color: white; }
 
-    /* KART TASARIMI */
+    /* MALZEME KARTI */
     .material-card {
         background-color: #ffffff;
         border-radius: 12px;
@@ -40,90 +40,67 @@ st.markdown("""
         border: 1px solid #e2e8f0;
         border-left: 5px solid #FF4B4B;
     }
-    .card-code { font-size: 11px; color: #94a3b8; font-weight: bold; letter-spacing: 0.5px; margin-bottom: 4px; }
+    .card-code { font-size: 11px; color: #94a3b8; font-weight: bold; margin-bottom: 4px; }
     .card-title { font-size: 16px; font-weight: 700; color: #1e293b; margin-bottom: 10px; line-height: 1.4; }
     
     .card-details {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        padding-top: 8px;
-        border-top: 1px dashed #f1f5f9;
-        font-size: 11px;
-        color: #475569;
+        display: flex; gap: 8px; padding-top: 8px; border-top: 1px dashed #f1f5f9;
+        font-size: 11px; color: #475569;
     }
-    .detail-item { display: flex; align-items: center; gap: 4px; background-color: #f8fafc; padding: 4px 8px; border-radius: 4px; }
+    .detail-item { background-color: #f8fafc; padding: 4px 8px; border-radius: 4px; }
     .detail-val { font-weight: 700; color: #334155; }
 
     .card-price { 
-        font-size: 18px; 
-        font-weight: 800; 
-        color: #dc2626; 
-        display: flex; 
-        align-items: center; 
-        justify-content: space-between; 
-        margin-top: 12px; 
-        background-color: #fef2f2;
-        padding: 10px;
-        border-radius: 8px;
+        font-size: 18px; font-weight: 800; color: #dc2626; 
+        display: flex; justify-content: space-between; align-items: center;
+        margin-top: 12px; background-color: #fef2f2; padding: 10px; border-radius: 8px;
     }
     .card-unit { font-size: 12px; color: #64748b; font-weight: normal; }
     .card-desc { font-size: 11px; color: #94a3b8; margin-top: 8px; font-style: italic;}
 
-    /* Başlık Kartı */
+    /* MAVİ BAŞLIK KARTI */
     .header-card {
-        background-color: #e3f2fd;
-        color: #1565c0;
-        padding: 15px;
-        border-radius: 8px;
-        margin-bottom: 20px;
-        font-weight: 800;
-        font-size: 18px;
-        text-align: center;
-        border: 1px solid #bbdefb;
-        text-transform: uppercase;
-        letter-spacing: 1px;
+        background-color: #e3f2fd; color: #1565c0; padding: 15px;
+        border-radius: 8px; margin-bottom: 20px; font-weight: 800;
+        font-size: 18px; text-align: center; border: 1px solid #bbdefb;
+        text-transform: uppercase; letter-spacing: 1px;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # --- YARDIMCI FONKSİYONLAR ---
 def clean_text(text):
+    """None, nan temizler."""
     if text is None: return ""
     s = str(text).strip()
     if s.lower() in ['nan', 'none', '', 'null']: return ""
     return s
 
 def format_para(tutar):
-    """Sayıyı TR formatına (1.234,56) çevirir."""
+    """TR Formatı: 1.234,56"""
     if pd.isna(tutar): return "0,00"
     if isinstance(tutar, str):
         tutar = tutar.replace('TL', '').replace(' ', '').strip()
-        if tutar == '': return "0,00"
+        if not tutar: return "0,00"
     try:
         val = float(tutar)
-        if val == 0: return "0,00"
         return "{:,.2f}".format(val).replace(",", "X").replace(".", ",").replace("X", ".")
     except:
         return "0,00"
 
-def df_para_formatla_ve_yasla(df):
+def apply_custom_style(df):
     """
-    Hem formatı düzeltir (1.234,56) hem de sağa yaslar.
+    Sayısal sütunları bulur, formatlar ve SAĞA yaslar.
     """
-    # 1. Sayısal sütunları bul
-    sayisal_sutunlar = list(df.select_dtypes(include=['float64', 'int64']).columns)
+    # Sayısal sütunları bul
+    num_cols = df.select_dtypes(include=['float64', 'int64']).columns
     
-    # Kopyasını alıyoruz (Orijinal veriyi bozmamak için)
-    df_gosterim = df.copy()
+    # Formatlama (String'e dönüşür)
+    for c in num_cols:
+        df[c] = df[c].apply(lambda x: "{:,.2f}".format(x).replace(",", "X").replace(".", ",").replace("X", ".") if pd.notnull(x) else "")
     
-    # 2. Formatlama (String'e dönüşür)
-    for col in sayisal_sutunlar:
-        df_gosterim[col] = df_gosterim[col].apply(lambda x: "{:,.2f}".format(x).replace(",", "X").replace(".", ",").replace("X", ".") if pd.notnull(x) else "")
-    
-    # 3. SAĞA YASLAMA (Pandas Styler)
-    # Metne dönüşen sütunları bulup onlara 'text-align: right' stili veriyoruz.
-    return df_gosterim.style.set_properties(subset=sayisal_sutunlar, **{'text-align': 'right'})
+    # Sağa yaslama stili
+    return df.style.set_properties(subset=num_cols, **{'text-align': 'right'})
 
 # --- DRIVE BAĞLANTISI ---
 @st.cache_resource
@@ -195,7 +172,7 @@ def main():
         """, unsafe_allow_html=True)
 
     # --- DOSYALAR ---
-    with st.spinner("Veriler yükleniyor..."):
+    with st.spinner("Yükleniyor..."):
         files = list_files_in_folder(service, DRIVE_KLASOR_ID)
     
     if not files:
@@ -211,7 +188,6 @@ def main():
     else:
         malzeme_dosyasi = None
 
-    # --- SEKMELER ---
     tab_malzeme, tab_projeler = st.tabs(["🧱 Malzeme Kütüphanesi", "📋 Proje Teklifleri"])
 
     # ----------------------------------------
@@ -221,12 +197,12 @@ def main():
         if malzeme_dosyasi:
             tarih_ham = malzeme_dosyasi.get('modifiedTime', '')
             tarih_guzel = tarih_ham[:10] if tarih_ham else ""
-            st.info(f"📂 Liste: **{malzeme_dosyasi['name']}** (Güncelleme: {tarih_guzel})")
+            st.info(f"📂 Liste: **{malzeme_dosyasi['name']}** ({tarih_guzel})")
             
             df = load_excel_as_df(service, malzeme_dosyasi['id'])
             
             if df is not None:
-                search_term = st.text_input("🔍 Malzeme Ara:", placeholder="Ürün adı, kod veya kategori...")
+                search_term = st.text_input("🔍 Malzeme Ara:", placeholder="Ara...")
                 if search_term:
                      df = df[df.astype(str).apply(lambda x: x.str.contains(search_term, case=False, na=False)).any(axis=1)]
 
@@ -234,7 +210,7 @@ def main():
 
                 if view == "Kart Görünümü":
                     if df.empty:
-                        st.warning("Sonuç bulunamadı.")
+                        st.warning("Sonuç yok.")
                     else:
                         cols = st.columns(3) 
                         for index, row in df.iterrows():
@@ -248,17 +224,16 @@ def main():
                                 f_malzeme = row.get('Malzeme Birim Fiyat', 0)
                                 f_iscilik = row.get('İşçilik Birim Fiyat', 0)
                                 f_toplam = row.get('Toplam Birim Fiyat', 0)
-                                para_birimi = clean_text(row.get('Para Birimi'))
-                                if not para_birimi: para_birimi = "TL"
+                                para_birimi = clean_text(row.get('Para Birimi')) or "TL"
 
                                 # Başlık Kontrolü
                                 is_header = False
                                 try:
-                                    tutar_kontrol = float(f_toplam)
+                                    tutar_val = float(f_toplam)
                                 except:
-                                    tutar_kontrol = 0
+                                    tutar_val = 0
                                 
-                                if tutar_kontrol == 0 and birim == "":
+                                if tutar_val == 0 and birim == "":
                                     is_header = True
                                 
                                 if is_header:
@@ -267,20 +242,17 @@ def main():
                                 else:
                                     birim_str = f"/ {birim}" if birim else ""
                                     kod_html = f'<div class="card-code">#{kod}</div>' if kod else ""
-                                    str_malz = format_para(f_malzeme)
-                                    str_isc = format_para(f_iscilik)
-                                    str_top = format_para(f_toplam)
-
+                                    
                                     html_content = f"""
                                     <div class="material-card">
                                         {kod_html}
                                         <div class="card-title">{ad}</div>
                                         <div class="card-details">
-                                            <div class="detail-item">🧱 Malz: <span class="detail-val">{str_malz} {para_birimi}</span></div>
-                                            <div class="detail-item">👷 İşç: <span class="detail-val">{str_isc} {para_birimi}</span></div>
+                                            <div class="detail-item">🧱 Malz: <span class="detail-val">{format_para(f_malzeme)} {para_birimi}</span></div>
+                                            <div class="detail-item">👷 İşç: <span class="detail-val">{format_para(f_iscilik)} {para_birimi}</span></div>
                                         </div>
                                         <div class="card-price">
-                                            {str_top} {para_birimi}
+                                            {format_para(f_toplam)} {para_birimi}
                                             <span class="card-unit">{birim_str}</span>
                                         </div>
                                         <div class="card-desc">{aciklama}</div>
@@ -290,20 +262,20 @@ def main():
                 else:
                     st.dataframe(df, use_container_width=True, hide_index=True)
         else:
-            st.info("Henüz yüklenmiş bir malzeme listesi yok.")
+            st.info("Malzeme listesi yok.")
 
     # ----------------------------------------
-    # SEKME 2: PROJELER (GÜÇLENDİRİLMİŞ STYLER)
+    # SEKME 2: PROJELER (SAĞA YASLI FORMAT)
     # ----------------------------------------
     with tab_projeler:
         if teklif_dosyalari:
             isimler = [f['name'] for f in teklif_dosyalari]
-            secim = st.selectbox("İncelenecek Proje:", isimler)
+            secim = st.selectbox("Proje Seç:", isimler)
             
             secilen_dosya = next(f for f in teklif_dosyalari if f['name'] == secim)
             
             if secilen_dosya:
-                with st.spinner("Proje açılıyor..."):
+                with st.spinner("Açılıyor..."):
                     xls_proj = load_excel_file_obj(service, secilen_dosya['id'])
                     
                     if xls_proj:
@@ -311,8 +283,9 @@ def main():
                         if "İcmal Tablosu" in sheet_names:
                             st.subheader("📊 İcmal Özeti")
                             df_icmal = pd.read_excel(xls_proj, "İcmal Tablosu")
+                            
                             # Formatla ve Sağa Yasla
-                            st.dataframe(df_para_formatla_ve_yasla(df_icmal), use_container_width=True)
+                            st.dataframe(apply_custom_style(df_icmal), use_container_width=True)
                             st.divider()
                         
                         detay_sayfalari = [s for s in sheet_names if s != "İcmal Tablosu"]
@@ -321,9 +294,9 @@ def main():
                             if sayfa:
                                 df_detay = pd.read_excel(xls_proj, sayfa)
                                 # Formatla ve Sağa Yasla
-                                st.dataframe(df_para_formatla_ve_yasla(df_detay), use_container_width=True)
+                                st.dataframe(apply_custom_style(df_detay), use_container_width=True)
         else:
-            st.info("Henüz proje teklifi bulunamadı.")
+            st.info("Proje teklifi yok.")
 
 if __name__ == "__main__":
     main()
