@@ -1,250 +1,142 @@
 import streamlit as st
 import pandas as pd
-import requests
-from io import BytesIO
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
+import io
+import os
 
-# --- 1. SAYFA AYARLARI ---
-st.set_page_config(
-    page_title="ArtikaPro Bulut",
-    page_icon="🏗️",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+st.set_page_config(page_title="ArtikaPro Mobil", page_icon="🏗️", layout="wide")
 
-# --- 2. PREMIUM TASARIM (CSS) ---
+# --- CSS ---
 st.markdown("""
 <style>
-    /* Arka plan ve genel font */
-    .main { background-color: #f8f9fa; }
-    
-    /* KART TASARIMI */
-    .material-card {
-        background-color: #ffffff;
-        border-radius: 15px;
-        padding: 20px;
-        margin-bottom: 20px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-        border: 1px solid #eef2f6;
-        transition: all 0.3s ease;
-        position: relative;
-        overflow: hidden;
-    }
-    .material-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-        border-color: #FF4B4B;
-    }
-    
-    /* Sol taraftaki renkli şerit */
-    .card-strip {
-        position: absolute;
-        left: 0;
-        top: 0;
-        bottom: 0;
-        width: 6px;
-        background: linear-gradient(180deg, #FF4B4B 0%, #FF8F8F 100%);
-    }
-
-    /* İçerik Stilleri */
-    .card-code {
-        font-size: 12px;
-        color: #9ca3af;
-        letter-spacing: 1px;
-        text-transform: uppercase;
-        margin-bottom: 5px;
-    }
-    .card-title {
-        font-size: 18px;
-        font-weight: 700;
-        color: #1f2937;
-        margin-bottom: 10px;
-        line-height: 1.4;
-        height: 50px; /* İsimler uzunsa hizayı bozmasın */
-        overflow: hidden;
-    }
-    .card-price-box {
-        background-color: #fff1f2;
-        color: #be123c;
-        padding: 8px 12px;
-        border-radius: 8px;
-        font-weight: 800;
-        font-size: 20px;
-        display: inline-block;
-        margin-top: 10px;
-    }
-    .card-unit {
-        font-size: 12px;
-        color: #be123c;
-        margin-left: 2px;
-    }
-    .card-desc {
-        font-size: 13px;
-        color: #6b7280;
-        margin-top: 12px;
-        border-top: 1px solid #f3f4f6;
-        padding-top: 8px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-
-    /* İstatistik Kutuları */
-    div[data-testid="stMetric"] {
-        background-color: white;
-        border: 1px solid #e5e7eb;
-        padding: 15px;
-        border-radius: 12px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
-    }
+    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
+    .stTabs [data-baseweb="tab"] { height: 50px; background-color: #f0f2f6; border-radius: 5px; }
+    .stTabs [aria-selected="true"] { background-color: #ff4b4b; color: white; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 3. VERİ YÜKLEME (GÜNCELLENMİŞ VE SAĞLAMLAŞTIRILMIŞ) ---
-@st.cache_data(ttl=600)
-def load_data():
-    # BURAYA O UZUN DRIVE ID'Yİ YAPIŞTIR
-    DRIVE_FILE_ID = '1mTx-wY_D2W1QGgAV7_xYJMu4UQ3cYybY' # Senin ID'n
-    
-    # İndirme bağlantısı
-    url = f'https://drive.google.com/uc?id={DRIVE_FILE_ID}&export=download'
-    
-    try:
-        # 1. Dosyayı indir
-        response = requests.get(url)
-        
-        # 2. Eğer dosya bulunamazsa veya izin yoksa hata fırlatır
-        if response.status_code != 200:
-            st.error(f"Dosyaya erişilemedi! Hata Kodu: {response.status_code}")
+# ==========================================
+# AYARLAR (ID'Yİ BURAYA YAPIŞTIR)
+# ==========================================
+DRIVE_KLASOR_ID = "1mTx-wY_D2W1QGgAV7_xYJMu4UQ3cYybY" 
+# ==========================================
+
+# --- DRIVE BAĞLANTISI ---
+def get_drive_service():
+    scopes = ['https://www.googleapis.com/auth/drive.readonly']
+    if "gcp_service_account" in st.secrets:
+        try:
+            creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scopes)
+            return build('drive', 'v3', credentials=creds)
+        except Exception as e:
+            st.error(f"Secrets hatası: {e}")
             return None
-            
-        # 3. İnen veriyi Excel olarak oku (Motoru elle belirtiyoruz: openpyxl)
-        data = BytesIO(response.content)
-        df = pd.read_excel(data, engine='openpyxl')
-        
-        return df
-        
+    st.error("Kimlik doğrulama anahtarı bulunamadı!")
+    return None
+
+def list_files_in_folder(service, folder_id):
+    # ROBOT ARTIK DOĞRUDAN O KLASÖRE BAKACAK
+    query = f"'{folder_id}' in parents and mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' and trashed = false"
+    try:
+        results = service.files().list(q=query, pageSize=50, fields="files(id, name, modifiedTime)").execute()
+        return results.get('files', [])
     except Exception as e:
-        st.error(f"HATA: Dosya okunamadı.\nSebep: {e}")
-        st.warning("Lütfen Drive dosyasının 'Bağlantıya sahip olan herkes' olarak ayarlandığından emin olun.")
+        st.error(f"Klasör okuma hatası: {e}. Lütfen Klasör ID'sinin doğru olduğundan emin olun.")
+        return []
+
+def load_excel_by_id(service, file_id):
+    try:
+        request = service.files().get_media(fileId=file_id)
+        file_stream = io.BytesIO()
+        downloader = MediaIoBaseDownload(file_stream, request)
+        done = False
+        while done is False:
+            status, done = downloader.next_chunk()
+        file_stream.seek(0)
+        return pd.ExcelFile(file_stream)
+    except Exception as e:
+        st.error(f"Dosya indirme hatası: {e}")
         return None
 
-df = load_data()
+# --- ARAYÜZ (MAIN) ---
+def main():
+    st.title("🏗️ ArtikaPro Bulut")
+    
+    service = get_drive_service()
+    if not service: return
 
-# --- 4. YAN MENÜ (SIDEBAR) ---
-with st.sidebar:
-    st.image("https://cdn-icons-png.flaticon.com/512/2666/2666505.png", width=70)
-    st.title("ArtikaPro Bulut")
-    st.caption("Dijital Malzeme Kataloğu")
-    st.divider()
+    # Belirtilen klasördeki dosyaları çek
+    files = list_files_in_folder(service, DRIVE_KLASOR_ID)
     
-    # Arama
-    search = st.text_input("🔍 Hızlı Arama", placeholder="Alçıpan, Boya...")
+    if not files:
+        st.warning(f"Bu klasörde (ID: {DRIVE_KLASOR_ID}) hiç Excel dosyası bulunamadı.")
+        return
+
+    # --- AKILLI FİLTRELEME ---
+    # 1. Malzeme dosyalarını bul
+    malzeme_adaylari = [f for f in files if "malzeme_listesi" in f['name'].lower()]
     
-    # Sıralama
-    sort_opt = st.radio("Sıralama", ["İsme Göre (A-Z)", "Fiyata Göre (Artan)", "Fiyata Göre (Azalan)"])
-    
-    st.divider()
-    if df is not None:
-        st.info(f"📅 Toplam {len(df)} kalem malzeme listeleniyor.")
+    # Eğer birden fazla varsa, en son değiştirileni (en yeniyi) seç
+    if malzeme_adaylari:
+        # Tarihe göre sırala (Yeniden eskiye)
+        malzeme_adaylari.sort(key=lambda x: x.get('modifiedTime', ''), reverse=True)
+        malzeme_dosyasi = malzeme_adaylari[0] # En tepedeki en yenisidir
     else:
-        st.error("Excel dosyası bulunamadı.")
+        malzeme_dosyasi = None
 
-# --- 5. ANA EKRAN ---
-if df is not None:
-    # --- Veri Filtreleme ve Sıralama ---
-    filtered_df = df.copy()
-    
-    # Arama
-    if search:
-        search = search.lower()
-        filtered_df = filtered_df[
-            filtered_df['Malzeme Adı'].astype(str).str.lower().str.contains(search) | 
-            filtered_df['Kod'].astype(str).str.lower().str.contains(search)
-        ]
-    
-    # Sıralama Mantığı
-    if sort_opt == "İsme Göre (A-Z)":
-        filtered_df = filtered_df.sort_values('Malzeme Adı')
-    elif sort_opt == "Fiyata Göre (Artan)":
-        filtered_df = filtered_df.sort_values('Toplam Birim Fiyat')
-    else:
-        filtered_df = filtered_df.sort_values('Toplam Birim Fiyat', ascending=False)
+    # 2. Teklif dosyalarını bul
+    teklif_dosyalari = [f for f in files if "teklif" in f['name'].lower()]
 
-    # --- ÜST BİLGİ PANELİ (METRICS) ---
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Listelenen Ürün", f"{len(filtered_df)}")
-    with col2:
-        avg = filtered_df['Toplam Birim Fiyat'].mean()
-        st.metric("Ortalama Fiyat", f"{avg:,.2f} ₺")
-    with col3:
-        max_p = filtered_df['Toplam Birim Fiyat'].max()
-        st.metric("En Pahalı", f"{max_p:,.2f} ₺")
-    with col4:
-        min_p = filtered_df['Toplam Birim Fiyat'].min()
-        st.metric("En Ucuz", f"{min_p:,.2f} ₺")
-        
-    st.divider()
+    tab_malzeme, tab_projeler = st.tabs(["🧱 Malzeme Kütüphanesi", "📋 Proje Teklifleri"])
 
-    # --- GÖRÜNÜM SEÇENEKLERİ (SEKMELER) ---
-    tab_card, tab_list = st.tabs(["🪟 Kart Görünümü (Mobil)", "📋 Liste Görünümü (Detaylı)"])
-
-    # --- TAB 1: KART GÖRÜNÜMÜ ---
-    with tab_card:
-        if filtered_df.empty:
-            st.warning("Aradığınız kriterlere uygun malzeme bulunamadı.")
-        else:
-            # 3'lü kolon sistemi (Telefonda otomatik tek kolona düşer)
-            cols = st.columns(3)
+    # 1. SEKME: MALZEME
+    with tab_malzeme:
+        if malzeme_dosyasi:
+            # Tarihi kullanıcı dostu formata çevirip gösterelim
+            tarih_ham = malzeme_dosyasi.get('modifiedTime', '')
+            tarih_guzel = tarih_ham[:16].replace('T', ' ') if tarih_ham else ""
             
-            for index, row in filtered_df.iterrows():
-                # Her satır için bir kart oluştur
-                with cols[index % 3]:
-                    # Verileri güvenli çek
-                    kod = row.get('Kod', '-')
-                    ad = row.get('Malzeme Adı', 'İsimsiz')
-                    fiyat = row.get('Toplam Birim Fiyat', 0)
-                    birim = row.get('Birim', 'Adet')
-                    aciklama = row.get('Açıklama', '-')
-                    if pd.isna(aciklama): aciklama = ""
+            st.caption(f"📅 Son Güncelleme: {tarih_guzel} | Dosya: {malzeme_dosyasi['name']}")
+            
+            xls = load_excel_by_id(service, malzeme_dosyasi['id'])
+            if xls:
+                df = pd.read_excel(xls)
+                
+                # Arama Kutusu
+                search_term = st.text_input("🔍 Malzeme Ara:", "")
+                if search_term:
+                    df = df[df.astype(str).apply(lambda x: x.str.contains(search_term, case=False, na=False)).any(axis=1)]
+                
+                st.dataframe(df, use_container_width=True, hide_index=True)
+        else:
+            st.info("Henüz yüklenmiş bir malzeme listesi yok.")
 
-                    # HTML Kart
-                    html = f"""
-                    <div class="material-card">
-                        <div class="card-strip"></div>
-                        <div class="card-code">#{kod}</div>
-                        <div class="card-title">{ad}</div>
-                        <div class="card-price-box">
-                            {fiyat:,.2f} <span class="card-unit">₺ / {birim}</span>
-                        </div>
-                        <div class="card-desc">
-                            ℹ️ {aciklama}
-                        </div>
-                    </div>
-                    """
-                    st.markdown(html, unsafe_allow_html=True)
+    # 2. SEKME: PROJELER
+    with tab_projeler:
+        if teklif_dosyalari:
+            isimler = [f['name'] for f in teklif_dosyalari]
+            secim = st.selectbox("İncelenecek Proje:", isimler)
+            
+            secilen_dosya = next(f for f in teklif_dosyalari if f['name'] == secim)
+            
+            if secilen_dosya:
+                with st.spinner("Proje açılıyor..."):
+                    xls_proj = load_excel_by_id(service, secilen_dosya['id'])
+                    if xls_proj:
+                        sheet_names = xls_proj.sheet_names
+                        if "İcmal Tablosu" in sheet_names:
+                            st.subheader("📊 İcmal Özeti")
+                            st.dataframe(pd.read_excel(xls_proj, "İcmal Tablosu"), use_container_width=True)
+                            st.divider()
+                        
+                        detay_sayfalari = [s for s in sheet_names if s != "İcmal Tablosu"]
+                        if detay_sayfalari:
+                            sayfa = st.radio("Detay Sayfası:", detay_sayfalari, horizontal=True)
+                            st.dataframe(pd.read_excel(xls_proj, sayfa), use_container_width=True)
+        else:
+            st.info("Bu klasörde isminde 'Teklif' geçen dosya bulunamadı.")
 
-    # --- TAB 2: LİSTE GÖRÜNÜMÜ ---
-    with tab_list:
-        # Tabloyu daha şık göstermek için konfigürasyon
-        st.dataframe(
-            filtered_df,
-            column_config={
-                "Toplam Birim Fiyat": st.column_config.NumberColumn(
-                    "Birim Fiyat",
-                    format="%.2f ₺",
-                ),
-                "Malzeme Adı": st.column_config.TextColumn(
-                    "Malzeme Adı",
-                    width="medium"
-                ),
-                "Malzeme Birim Fiyat": st.column_config.NumberColumn(format="%.2f ₺"),
-                "İşçilik Birim Fiyat": st.column_config.NumberColumn(format="%.2f ₺"),
-            },
-            use_container_width=True,
-            hide_index=True,
-            height=600
-        )
-
-else:
-    st.error("⚠️ 'Malzeme_Listesi.xlsx' dosyası bulunamadı. Lütfen GitHub deponuza bu dosyayı yükleyin.")
+if __name__ == "__main__":
+    main()
