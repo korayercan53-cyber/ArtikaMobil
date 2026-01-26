@@ -10,8 +10,9 @@ import io
 # ==========================================
 DRIVE_KLASOR_ID = "1mTx-wY_D2W1QGgAV7_xYJMu4UQ3cYybY" 
 
-# Logo Linki (Çalışan bir link olduğundan emin olalım)
-LOGO_URL = "https://cdn-icons-png.flaticon.com/512/2666/2666505.png"
+# Şirket Logosu (Daha güvenilir bir kaynak seçildi)
+# Kendi logonu kullanmak için: Logonu 'logo.png' adıyla GitHub'a yükle ve buraya "logo.png" yaz.
+LOGO_URL = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Construction_icon_black.svg/1024px-Construction_icon_black.svg.png"
 # ==========================================
 
 # --- SAYFA AYARLARI ---
@@ -142,11 +143,12 @@ def main():
     service = get_drive_service()
     if not service: return
 
-    # --- LOGO VE BAŞLIK ALANI ---
-    # Logoyu daha düzgün yerleştirmek için kolon ayarı
-    col1, col2 = st.columns([1, 8])
+    # --- LOGO VE BAŞLIK ALANI (DÜZELTİLDİ) ---
+    col1, col2 = st.columns([1, 8]) # Logo alanı biraz daha dar
     with col1:
-        st.image(LOGO_URL, use_container_width=True) # use_column_width yerine container
+        # width=100 diyerek logoyu görünmeye zorluyoruz. 
+        # use_container_width kullanınca bazen 0px oluyor.
+        st.image(LOGO_URL, width=100) 
     with col2:
         st.title("ArtikaPro Bulut")
         st.caption("Saha ve Ofis Arasında Kesintisiz Veri Akışı")
@@ -207,11 +209,10 @@ def main():
                                 
                                 para_birimi = row.get('Para Birimi', 'TL')
                                 if pd.isna(para_birimi): para_birimi = "TL"
-                                
+
                                 aciklama = row.get('Açıklama', '')
 
-                                # HTML KART OLUŞTUR (GÜVENLİ YÖNTEM)
-                                # F-String içinde süslü parantez hatasını önlemek için dikkatli yazıyoruz
+                                # HTML KART (GÜVENLİ)
                                 html_content = f"""
                                 <div class="material-card">
                                     <div class="card-code">#{kod}</div>
@@ -227,7 +228,6 @@ def main():
                                     <div class="card-desc">{aciklama if pd.notna(aciklama) else ''}</div>
                                 </div>
                                 """
-                                # HTML'i RENDER ET
                                 st.markdown(html_content, unsafe_allow_html=True)
                 else:
                     st.dataframe(df, use_container_width=True, hide_index=True)
