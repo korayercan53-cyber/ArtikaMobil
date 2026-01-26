@@ -4,7 +4,6 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 import io
-import numpy as np
 
 # ==========================================
 # AYARLAR
@@ -71,16 +70,10 @@ st.markdown("""
 
 # --- YARDIMCI FONKSİYONLAR ---
 def clean_text(text):
-    """
-    Her türlü boşluğu (None, nan, boş string) temizler.
-    Asla 'None' stringi döndürmez.
-    """
+    """None, nan temizler."""
     if text is None: return ""
-    # Pandas NaN kontrolü
-    if pd.isna(text): return ""
-    
     s = str(text).strip()
-    if s.lower() in ['nan', 'none', '', 'null', 'nat']: return ""
+    if s.lower() in ['nan', 'none', '', 'null']: return ""
     return s
 
 def format_para_str(tutar):
@@ -98,21 +91,15 @@ def apply_table_style(df):
     Veriyi sayı (float) olarak tutar ama gösterirken Türkçe formatlar.
     Bu sayede SAĞA YASLI kalır.
     """
-    # 1. Boş satırları temizle (İhtiyaten)
-    df = df.dropna(how='all')
+    df = df.dropna(how='all') # Boş satırları sil
     
-    # 2. Sayısal sütunları bul
     num_cols = df.select_dtypes(include=['float64', 'int64']).columns
     
-    # 3. Format Fonksiyonu (TR)
     def tr_fmt_func(x):
         if pd.isna(x): return ""
         return "{:,.2f}".format(x).replace(",", "X").replace(".", ",").replace("X", ".")
 
-    # 4. Styler Oluştur
     styler = df.style.format({col: tr_fmt_func for col in num_cols})
-    
-    # 5. Sağa Yasla
     styler = styler.set_properties(subset=num_cols, **{'text-align': 'right'})
     
     return styler
@@ -131,10 +118,15 @@ def get_drive_service():
     st.error("Kimlik doğrulama anahtarı bulunamadı!")
     return None
 
-def list_files_in_folder(service, folder_id):
+# --- DÜZELTME BURADA: Cache eklendi ---
+# ttl=600 -> 10 dakika boyunca dosya listesini hafızada tutar.
+# Böylece her tıklamada tekrar Drive'a gitmez, sayfa atlamaz.
+@st.cache_data(ttl=600)
+def list_files_in_folder(_service, folder_id): 
+    # Not: _service parametresinin başına alt çizgi koyduk ki Streamlit bunu hashlemesin (Hız için)
     query = f"'{folder_id}' in parents and mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' and trashed = false"
     try:
-        results = service.files().list(q=query, pageSize=50, fields="files(id, name, modifiedTime)").execute()
+        results = _service.files().list(q=query, pageSize=50, fields="files(id, name, modifiedTime)").execute()
         return results.get('files', [])
     except Exception as e:
         st.error(f"Klasör okuma hatası: {e}")
@@ -150,23 +142,14 @@ def load_excel_as_df(_service, file_id):
         while done is False:
             status, done = downloader.next_chunk()
         file_stream.seek(0)
-        
-        # Excel'i oku
-        df = pd.read_excel(file_stream)
-        
-        # --- KRİTİK TEMİZLİK ---
-        # 1. Tamamen boş satırları sil
-        df.dropna(how='all', inplace=True)
-        
-        # 2. Eğer 'Malzeme Adı' sütunu varsa ve boşsa, o satırı almayalım (Başlık değilse)
-        # Ama başlık satırlarını da korumalıyız. Başlık satırlarında sadece İsim olur, fiyat olmaz.
-        # Bu yüzden en güvenlisi: Sadece TAMAMEN boş satırları silmek.
-        
-        return df
+        return pd.read_excel(file_stream)
     except Exception as e:
         st.error(f"Dosya indirme hatası: {e}")
         return None
 
+# --- DÜZELTME: Bu fonksiyon da cache'lendi ---
+# Proje dosyasını da hafızaya alıyoruz, sekmeler arası geçiş ışık hızında olacak.
+@st.cache_data(ttl=600)
 def load_excel_file_obj(_service, file_id):
     try:
         request = _service.files().get_media(fileId=file_id)
@@ -198,8 +181,9 @@ def main():
             </div>
         """, unsafe_allow_html=True)
 
-    # --- DOSYALAR ---
+    # --- DOSYALAR (Artık Cache kullanıyor, çok hızlı) ---
     with st.spinner("Veriler yükleniyor..."):
+        # Service objesi cache lenemez olduğu için parametre ismini değiştirdik
         files = list_files_in_folder(service, DRIVE_KLASOR_ID)
     
     if not files:
@@ -229,8 +213,6 @@ def main():
             df = load_excel_as_df(service, malzeme_dosyasi['id'])
             
             if df is not None:
-                # --- İLAVE GÜVENLİK FİLTRESİ ---
-                # Eğer 'Malzeme Adı' boşsa o satırı gösterme (Boş kartları engeller)
                 if 'Malzeme Adı' in df.columns:
                      df = df[df['Malzeme Adı'].notna()]
                      df = df[df['Malzeme Adı'].astype(str).str.strip() != ""]
@@ -248,7 +230,6 @@ def main():
                         cols = st.columns(3) 
                         for index, row in df.iterrows():
                             with cols[index % 3]:
-                                # Veriler (Güçlü Temizlik)
                                 ad = clean_text(row.get('Malzeme Adı'))
                                 kod = clean_text(row.get('Kod'))
                                 birim = clean_text(row.get('Birim'))
@@ -259,19 +240,16 @@ def main():
                                 f_toplam = row.get('Toplam Birim Fiyat', 0)
                                 para_birimi = clean_text(row.get('Para Birimi')) or "TL"
 
-                                # Başlık Kontrolü
                                 is_header = False
                                 try:
                                     tutar_val = float(f_toplam)
                                 except:
                                     tutar_val = 0
                                 
-                                # Eğer tutar 0 ise ve birim boşsa -> Bu bir BAŞLIKTIR
                                 if tutar_val == 0 and birim == "":
                                     is_header = True
                                 
                                 if is_header:
-                                    # Mavi kartı sadece 'ad' doluysa bas
                                     if ad: 
                                         st.markdown(f'<div class="header-card">{ad}</div>', unsafe_allow_html=True)
                                 else:
@@ -304,7 +282,7 @@ def main():
             st.info("Malzeme listesi yok.")
 
     # ----------------------------------------
-    # SEKME 2: PROJELER (TABLO HİZALAMA)
+    # SEKME 2: PROJELER (CACHE VE HIZ)
     # ----------------------------------------
     with tab_projeler:
         if teklif_dosyalari:
@@ -314,7 +292,8 @@ def main():
             secilen_dosya = next(f for f in teklif_dosyalari if f['name'] == secim)
             
             if secilen_dosya:
-                with st.spinner("Açılıyor..."):
+                with st.spinner("Proje detayları yükleniyor..."):
+                    # Artık önbellekten geliyor, çok hızlı
                     xls_proj = load_excel_file_obj(service, secilen_dosya['id'])
                     
                     if xls_proj:
@@ -327,7 +306,8 @@ def main():
                         
                         detay_sayfalari = [s for s in sheet_names if s != "İcmal Tablosu"]
                         if detay_sayfalari:
-                            sayfa = st.pills("Detay Sayfası:", detay_sayfalari, default=detay_sayfalari[0])
+                            # Pills için key atadık ki Streamlit durumu karıştırmasın
+                            sayfa = st.pills("Detay Sayfası:", detay_sayfalari, default=detay_sayfalari[0], key="pills_detay")
                             if sayfa:
                                 df_detay = pd.read_excel(xls_proj, sayfa)
                                 st.dataframe(apply_table_style(df_detay), use_container_width=True)
