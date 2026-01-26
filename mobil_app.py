@@ -10,15 +10,14 @@ import io
 # ==========================================
 DRIVE_KLASOR_ID = "1mTx-wY_D2W1QGgAV7_xYJMu4UQ3cYybY" 
 
-# Şirket Logosu (Daha güvenilir bir kaynak seçildi)
-# Kendi logonu kullanmak için: Logonu 'logo.png' adıyla GitHub'a yükle ve buraya "logo.png" yaz.
-LOGO_URL = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Construction_icon_black.svg/1024px-Construction_icon_black.svg.png"
+# Logo Linki (Daha basit bir ikon)
+LOGO_URL = "https://cdn-icons-png.flaticon.com/512/2666/2666505.png"
 # ==========================================
 
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="ArtikaPro Bulut", page_icon="🏗️", layout="wide")
 
-# --- CSS TASARIMI ---
+# --- CSS TASARIMI (GÜNCELLENDİ) ---
 st.markdown("""
 <style>
     /* Sekme Tasarımı */
@@ -73,6 +72,31 @@ st.markdown("""
     }
     .card-unit { font-size: 12px; color: #64748b; font-weight: normal; }
     .card-desc { font-size: 12px; color: #94a3b8; margin-top: 8px; font-style: italic;}
+
+    /* Header Alanı (Logo ve Başlık İçin Özel Stil) */
+    .header-container {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid #e5e7eb;
+        margin-bottom: 20px;
+    }
+    .header-logo img {
+        width: 80px;
+        height: 80px;
+        object-fit: contain;
+    }
+    .header-text h1 {
+        margin: 0;
+        font-size: 28px;
+        color: #1f2937;
+    }
+    .header-text p {
+        margin: 0;
+        color: #6b7280;
+        font-size: 14px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -143,15 +167,19 @@ def main():
     service = get_drive_service()
     if not service: return
 
-    # --- LOGO VE BAŞLIK ALANI (DÜZELTİLDİ) ---
-    col1, col2 = st.columns([1, 8]) # Logo alanı biraz daha dar
-    with col1:
-        # width=100 diyerek logoyu görünmeye zorluyoruz. 
-        # use_container_width kullanınca bazen 0px oluyor.
-        st.image(LOGO_URL, width=100) 
-    with col2:
-        st.title("ArtikaPro Bulut")
-        st.caption("Saha ve Ofis Arasında Kesintisiz Veri Akışı")
+    # --- BAŞLIK ALANI (HTML YÖNTEMİ - EN GARANTİSİ) ---
+    # st.image yerine kendi HTML yapımızı kuruyoruz.
+    st.markdown(f"""
+    <div class="header-container">
+        <div class="header-logo">
+            <img src="{LOGO_URL}" alt="Logo">
+        </div>
+        <div class="header-text">
+            <h1>ArtikaPro Bulut</h1>
+            <p>Saha ve Ofis Arasında Kesintisiz Veri Akışı</p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
     # --- DOSYALARI ÇEK ---
     with st.spinner("Dosyalar taranıyor..."):
@@ -212,7 +240,7 @@ def main():
 
                                 aciklama = row.get('Açıklama', '')
 
-                                # HTML KART (GÜVENLİ)
+                                # HTML KART OLUŞTUR
                                 html_content = f"""
                                 <div class="material-card">
                                     <div class="card-code">#{kod}</div>
