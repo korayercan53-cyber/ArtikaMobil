@@ -157,7 +157,7 @@ def main():
 
     tab_malzeme, tab_projeler = st.tabs(["🧱 Malzeme Kütüphanesi", "📋 Proje Teklifleri"])
 
-    # --- SEKME 1: MALZEME (GÜNCELLENDİ) ---
+    # --- SEKME 1: MALZEME (DÜZELTİLMİŞ & TÜRKÇE FORMATLI) ---
     with tab_malzeme:
         if malzeme_dosyasi:
             tarih_ham = malzeme_dosyasi.get('modifiedTime', '')
@@ -179,38 +179,46 @@ def main():
                         st.warning("Sonuç bulunamadı.")
                     else:
                         cols = st.columns(3) 
+                        
+                        # TÜRKÇE PARA FORMATI FONKSİYONU
+                        def tr_fmt(tutar):
+                            if pd.isna(tutar): return "0,00"
+                            # Önce float olduğundan emin olalım
+                            try: tutar = float(tutar)
+                            except: return "0,00"
+                            # İngiliz formatı (1,234.56) -> Türkçe formatı (1.234,56) çevrimi
+                            return f"{tutar:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
                         for index, row in df.iterrows():
                             with cols[index % 3]:
-                                # --- VERİ ÇEKME KISMI (GÜNCELLENDİ) ---
                                 ad = row.get('Malzeme Adı', '-')
                                 kod = row.get('Kod', '')
                                 
-                                # Fiyatları Güvenli Çek
+                                # Verileri Çek
                                 f_malzeme = row.get('Malzeme Birim Fiyat', 0)
                                 f_iscilik = row.get('İşçilik Birim Fiyat', 0)
                                 f_toplam = row.get('Toplam Birim Fiyat', 0)
-                                
                                 birim = row.get('Birim', 'Adet')
                                 
-                                # Para Birimi (Excel'de sütun varsa alır, yoksa TL yapar)
+                                # Para Birimi
                                 para_birimi = row.get('Para Birimi', 'TL')
                                 if pd.isna(para_birimi): para_birimi = "TL"
 
                                 aciklama = row.get('Açıklama', '')
 
-                                # --- YENİ KART TASARIMI ---
+                                # HTML KART (Düzeltilmiş)
                                 st.markdown(f"""
                                 <div class="material-card">
                                     <div class="card-code">#{kod}</div>
                                     <div class="card-title">{ad}</div>
                                     
                                     <div class="card-details">
-                                        <div class="detail-item">🧱 Malz: <span class="detail-val">{f_malzeme:,.2f}</span></div>
-                                        <div class="detail-item">👷 İşç: <span class="detail-val">{f_iscilik:,.2f}</span></div>
+                                        <div class="detail-item">🧱 Malz: <span class="detail-val">{tr_fmt(f_malzeme)} {para_birimi}</span></div>
+                                        <div class="detail-item">👷 İşç: <span class="detail-val">{tr_fmt(f_iscilik)} {para_birimi}</span></div>
                                     </div>
 
                                     <div class="card-price">
-                                        {f_toplam:,.2f} {para_birimi}
+                                        {tr_fmt(f_toplam)} {para_birimi}
                                         <span class="card-unit">/ {birim}</span>
                                     </div>
                                     
