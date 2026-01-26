@@ -76,31 +76,36 @@ def clean_text(text):
     if s.lower() in ['nan', 'none', '', 'null']: return ""
     return s
 
-def format_para(tutar):
-    """TR Formatı: 1.234,56"""
+def format_para_str(tutar):
+    """Sadece KARTLAR için string dönüşümü (1.234,56)"""
     if pd.isna(tutar): return "0,00"
-    if isinstance(tutar, str):
-        tutar = tutar.replace('TL', '').replace(' ', '').strip()
-        if not tutar: return "0,00"
     try:
         val = float(tutar)
         return "{:,.2f}".format(val).replace(",", "X").replace(".", ",").replace("X", ".")
     except:
         return "0,00"
 
-def apply_custom_style(df):
+def apply_table_style(df):
     """
-    Sayısal sütunları bulur, formatlar ve SAĞA yaslar.
+    TABLOLAR İÇİN ÖZEL FORMATLAYICI
+    Veriyi sayı (float) olarak tutar ama gösterirken Türkçe formatlar.
+    Bu sayede SAĞA YASLI kalır.
     """
-    # Sayısal sütunları bul
+    # 1. Sayısal sütunları bul
     num_cols = df.select_dtypes(include=['float64', 'int64']).columns
     
-    # Formatlama (String'e dönüşür)
-    for c in num_cols:
-        df[c] = df[c].apply(lambda x: "{:,.2f}".format(x).replace(",", "X").replace(".", ",").replace("X", ".") if pd.notnull(x) else "")
+    # 2. Format Fonksiyonu (TR)
+    def tr_fmt_func(x):
+        if pd.isna(x): return ""
+        return "{:,.2f}".format(x).replace(",", "X").replace(".", ",").replace("X", ".")
+
+    # 3. Styler Oluştur
+    styler = df.style.format({col: tr_fmt_func for col in num_cols})
     
-    # Sağa yaslama stili
-    return df.style.set_properties(subset=num_cols, **{'text-align': 'right'})
+    # 4. Sağa Yasla (Garanti olsun diye hem header hem cell)
+    styler = styler.set_properties(subset=num_cols, **{'text-align': 'right'})
+    
+    return styler
 
 # --- DRIVE BAĞLANTISI ---
 @st.cache_resource
@@ -172,7 +177,7 @@ def main():
         """, unsafe_allow_html=True)
 
     # --- DOSYALAR ---
-    with st.spinner("Yükleniyor..."):
+    with st.spinner("Veriler yükleniyor..."):
         files = list_files_in_folder(service, DRIVE_KLASOR_ID)
     
     if not files:
@@ -226,7 +231,7 @@ def main():
                                 f_toplam = row.get('Toplam Birim Fiyat', 0)
                                 para_birimi = clean_text(row.get('Para Birimi')) or "TL"
 
-                                # Başlık Kontrolü
+                                # Başlık Kontrolü (Fiyat 0 ve Birim Boşsa)
                                 is_header = False
                                 try:
                                     tutar_val = float(f_toplam)
@@ -243,16 +248,21 @@ def main():
                                     birim_str = f"/ {birim}" if birim else ""
                                     kod_html = f'<div class="card-code">#{kod}</div>' if kod else ""
                                     
+                                    # Kartlar için string format (Kartlar zaten özel tasarım, hizalama sorunu olmaz)
+                                    str_malz = format_para_str(f_malzeme)
+                                    str_isc = format_para_str(f_iscilik)
+                                    str_top = format_para_str(f_toplam)
+
                                     html_content = f"""
                                     <div class="material-card">
                                         {kod_html}
                                         <div class="card-title">{ad}</div>
                                         <div class="card-details">
-                                            <div class="detail-item">🧱 Malz: <span class="detail-val">{format_para(f_malzeme)} {para_birimi}</span></div>
-                                            <div class="detail-item">👷 İşç: <span class="detail-val">{format_para(f_iscilik)} {para_birimi}</span></div>
+                                            <div class="detail-item">🧱 Malz: <span class="detail-val">{str_malz} {para_birimi}</span></div>
+                                            <div class="detail-item">👷 İşç: <span class="detail-val">{str_isc} {para_birimi}</span></div>
                                         </div>
                                         <div class="card-price">
-                                            {format_para(f_toplam)} {para_birimi}
+                                            {str_top} {para_birimi}
                                             <span class="card-unit">{birim_str}</span>
                                         </div>
                                         <div class="card-desc">{aciklama}</div>
@@ -265,7 +275,7 @@ def main():
             st.info("Malzeme listesi yok.")
 
     # ----------------------------------------
-    # SEKME 2: PROJELER (SAĞA YASLI FORMAT)
+    # SEKME 2: PROJELER (TABLO HİZALAMA DÜZELTİLDİ)
     # ----------------------------------------
     with tab_projeler:
         if teklif_dosyalari:
@@ -284,8 +294,8 @@ def main():
                             st.subheader("📊 İcmal Özeti")
                             df_icmal = pd.read_excel(xls_proj, "İcmal Tablosu")
                             
-                            # Formatla ve Sağa Yasla
-                            st.dataframe(apply_custom_style(df_icmal), use_container_width=True)
+                            # Yeni Formatlayıcı (Styler)
+                            st.dataframe(apply_table_style(df_icmal), use_container_width=True)
                             st.divider()
                         
                         detay_sayfalari = [s for s in sheet_names if s != "İcmal Tablosu"]
@@ -293,8 +303,8 @@ def main():
                             sayfa = st.pills("Detay Sayfası:", detay_sayfalari, default=detay_sayfalari[0])
                             if sayfa:
                                 df_detay = pd.read_excel(xls_proj, sayfa)
-                                # Formatla ve Sağa Yasla
-                                st.dataframe(apply_custom_style(df_detay), use_container_width=True)
+                                # Yeni Formatlayıcı (Styler)
+                                st.dataframe(apply_table_style(df_detay), use_container_width=True)
         else:
             st.info("Proje teklifi yok.")
 
