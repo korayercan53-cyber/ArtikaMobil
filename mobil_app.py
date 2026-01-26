@@ -10,12 +10,16 @@ import io
 # ==========================================
 DRIVE_KLASOR_ID = "1mTx-wY_D2W1QGgAV7_xYJMu4UQ3cYybY" 
 
-# İnşaat İkonu (Logo)
+# Logo Linki (Daha basit ve net bir ikon)
 LOGO_URL = "https://cdn-icons-png.flaticon.com/512/2666/2666505.png"
 # ==========================================
 
-# --- SAYFA AYARLARI ---
-st.set_page_config(page_title="ArtikaPro Bulut", page_icon="🏗️", layout="wide")
+# --- SAYFA AYARLARI (Sol üstteki ikonu buradan değiştiriyoruz) ---
+st.set_page_config(
+    page_title="ArtikaPro Bulut", 
+    page_icon="🏗️", # Burası tarayıcı sekmesindeki ikondur.
+    layout="wide"
+)
 
 # --- CSS TASARIMI ---
 st.markdown("""
@@ -72,6 +76,31 @@ st.markdown("""
     }
     .card-unit { font-size: 12px; color: #64748b; font-weight: normal; }
     .card-desc { font-size: 12px; color: #94a3b8; margin-top: 8px; font-style: italic;}
+
+    /* HEADER ALANI İÇİN ÖZEL CSS */
+    .custom-header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 20px;
+        padding-bottom: 20px;
+        border-bottom: 2px solid #f0f2f6;
+    }
+    .header-logo {
+        width: 80px;
+        height: 80px;
+        margin-right: 20px;
+    }
+    .header-title h1 {
+        margin: 0;
+        font-size: 36px;
+        color: #0e1117;
+        font-weight: 700;
+    }
+    .header-title p {
+        margin: 0;
+        font-size: 16px;
+        color: #808495;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -142,17 +171,17 @@ def main():
     service = get_drive_service()
     if not service: return
 
-    # --- LOGO VE BAŞLIK (Native Yöntem) ---
-    # Logoya biraz daha fazla yer ayırdık [2, 10]
-    col1, col2 = st.columns([2, 10]) 
-    
-    with col1:
-        # width=80 diyerek logoyu sabitliyoruz.
-        st.image(LOGO_URL, width=80) 
-        
-    with col2:
-        st.title("ArtikaPro Bulut")
-        st.caption("Saha ve Ofis Arasında Kesintisiz Veri Akışı")
+    # --- LOGO VE BAŞLIK (HTML Header Yöntemi) ---
+    # st.title yerine kendi HTML bloğumuzu basıyoruz.
+    st.markdown(f"""
+    <div class="custom-header">
+        <img src="{LOGO_URL}" class="header-logo">
+        <div class="header-title">
+            <h1>ArtikaPro Bulut</h1>
+            <p>Saha ve Ofis Arasında Kesintisiz Veri Akışı</p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
     # --- DOSYALARI ÇEK ---
     with st.spinner("Dosyalar taranıyor..."):
