@@ -6,19 +6,18 @@ from googleapiclient.http import MediaIoBaseDownload
 import io
 
 # ==========================================
-# AYARLAR (Burayı Kendi Bilgilerinle Doldur)
+# AYARLAR
 # ==========================================
-# 1. Drive Klasör ID'si
 DRIVE_KLASOR_ID = "1mTx-wY_D2W1QGgAV7_xYJMu4UQ3cYybY" 
 
-# 2. Şirket Logosu (Varsayılan olarak inşaat ikonu koydum. Kendi logo linkini buraya yapıştırabilirsin)
+# Logo Linki (Çalışan bir link olduğundan emin olalım)
 LOGO_URL = "https://cdn-icons-png.flaticon.com/512/2666/2666505.png"
 # ==========================================
 
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="ArtikaPro Bulut", page_icon="🏗️", layout="wide")
 
-# --- TASARIM (CSS) ---
+# --- CSS TASARIMI ---
 st.markdown("""
 <style>
     /* Sekme Tasarımı */
@@ -26,7 +25,7 @@ st.markdown("""
     .stTabs [data-baseweb="tab"] { height: 45px; background-color: #f1f5f9; border-radius: 8px; font-weight: 600; }
     .stTabs [aria-selected="true"] { background-color: #FF4B4B; color: white; }
 
-    /* KART TASARIMI (Detaylı) */
+    /* KART TASARIMI */
     .material-card {
         background-color: #ffffff;
         border-radius: 12px;
@@ -44,7 +43,7 @@ st.markdown("""
     .card-code { font-size: 11px; color: #94a3b8; font-weight: bold; letter-spacing: 0.5px; }
     .card-title { font-size: 16px; font-weight: 700; color: #1e293b; margin: 5px 0; line-height: 1.3; }
     
-    /* Detay Satırı (Malzeme/İşçilik) */
+    /* Detay Satırı */
     .card-details {
         display: flex;
         flex-wrap: wrap;
@@ -58,7 +57,7 @@ st.markdown("""
     .detail-item { display: flex; align-items: center; gap: 4px; background-color: #f8fafc; padding: 2px 6px; border-radius: 4px; }
     .detail-val { font-weight: 700; color: #334155; }
 
-    /* Toplam Fiyat Alanı */
+    /* Fiyat Alanı */
     .card-price { 
         font-size: 18px; 
         font-weight: 800; 
@@ -78,11 +77,10 @@ st.markdown("""
 
 # --- YARDIMCI FONKSİYONLAR ---
 def tr_fmt(tutar):
-    """Sayıyı Türkçe para formatına çevirir (1.234,56)"""
+    """Sayıyı Türkçe formatına çevirir (1.234,56)"""
     if pd.isna(tutar): return "0,00"
     try:
         val = float(tutar)
-        # Binlik ayracı virgül, ondalık nokta yap (standart) sonra değiştir
         return "{:,.2f}".format(val).replace(",", "X").replace(".", ",").replace("X", ".")
     except:
         return "0,00"
@@ -144,15 +142,12 @@ def main():
     service = get_drive_service()
     if not service: return
 
-    # --- HEADER / LOGO ALANI (Yeni) ---
-    # Logoyu sola, başlığı sağa yerleştiriyoruz
-    col_logo, col_title = st.columns([1, 6])
-    
-    with col_logo:
-        # Logoyu buraya basıyoruz
-        st.image(LOGO_URL, width=80) 
-        
-    with col_title:
+    # --- LOGO VE BAŞLIK ALANI ---
+    # Logoyu daha düzgün yerleştirmek için kolon ayarı
+    col1, col2 = st.columns([1, 8])
+    with col1:
+        st.image(LOGO_URL, use_container_width=True) # use_column_width yerine container
+    with col2:
         st.title("ArtikaPro Bulut")
         st.caption("Saha ve Ofis Arasında Kesintisiz Veri Akışı")
 
@@ -177,7 +172,7 @@ def main():
     tab_malzeme, tab_projeler = st.tabs(["🧱 Malzeme Kütüphanesi", "📋 Proje Teklifleri"])
 
     # ----------------------------------------
-    # SEKME 1: MALZEME (Kart Görünümü)
+    # SEKME 1: MALZEME
     # ----------------------------------------
     with tab_malzeme:
         if malzeme_dosyasi:
@@ -212,36 +207,35 @@ def main():
                                 
                                 para_birimi = row.get('Para Birimi', 'TL')
                                 if pd.isna(para_birimi): para_birimi = "TL"
-
+                                
                                 aciklama = row.get('Açıklama', '')
 
-                                # HTML KART OLUŞTUR
-                                card_html = f"""
+                                # HTML KART OLUŞTUR (GÜVENLİ YÖNTEM)
+                                # F-String içinde süslü parantez hatasını önlemek için dikkatli yazıyoruz
+                                html_content = f"""
                                 <div class="material-card">
                                     <div class="card-code">#{kod}</div>
                                     <div class="card-title">{ad}</div>
-                                    
                                     <div class="card-details">
                                         <div class="detail-item">🧱 Malz: <span class="detail-val">{tr_fmt(f_malzeme)} {para_birimi}</span></div>
                                         <div class="detail-item">👷 İşç: <span class="detail-val">{tr_fmt(f_iscilik)} {para_birimi}</span></div>
                                     </div>
-
                                     <div class="card-price">
                                         {tr_fmt(f_toplam)} {para_birimi}
                                         <span class="card-unit">/ {birim}</span>
                                     </div>
-                                    
                                     <div class="card-desc">{aciklama if pd.notna(aciklama) else ''}</div>
                                 </div>
                                 """
-                                st.markdown(card_html, unsafe_allow_html=True)
+                                # HTML'i RENDER ET
+                                st.markdown(html_content, unsafe_allow_html=True)
                 else:
                     st.dataframe(df, use_container_width=True, hide_index=True)
         else:
             st.info("Henüz yüklenmiş bir malzeme listesi yok.")
 
     # ----------------------------------------
-    # SEKME 2: PROJELER
+    # SEKME 2: PROJELER (DEĞİŞMEDİ)
     # ----------------------------------------
     with tab_projeler:
         if teklif_dosyalari:
