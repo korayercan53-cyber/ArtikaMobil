@@ -10,7 +10,7 @@ import os
 st.set_page_config(page_title="ArtikaPro Bulut", page_icon="🏗️", layout="wide")
 
 # ==========================================
-# 1. TASARIM KODLARI (Sadece Burası Yeni)
+# 1. TASARIM KODLARI (Güncellendi)
 # ==========================================
 st.markdown("""
 <style>
@@ -19,7 +19,7 @@ st.markdown("""
     .stTabs [data-baseweb="tab"] { height: 45px; background-color: #f1f5f9; border-radius: 8px; font-weight: 600; }
     .stTabs [aria-selected="true"] { background-color: #FF4B4B; color: white; }
 
-    /* KART TASARIMI (Mobil Uyumlu) */
+    /* KART TASARIMI (Detaylı) */
     .material-card {
         background-color: #ffffff;
         border-radius: 12px;
@@ -28,12 +28,43 @@ st.markdown("""
         box-shadow: 0 4px 6px rgba(0,0,0,0.05);
         border: 1px solid #e2e8f0;
         border-left: 5px solid #FF4B4B;
+        transition: transform 0.2s;
+    }
+    .material-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 10px 15px rgba(0,0,0,0.1);
     }
     .card-code { font-size: 11px; color: #94a3b8; font-weight: bold; letter-spacing: 0.5px; }
     .card-title { font-size: 16px; font-weight: 700; color: #1e293b; margin: 5px 0; line-height: 1.3; }
-    .card-price { font-size: 18px; font-weight: 800; color: #dc2626; display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
+    
+    /* Yeni Detay Satırı (Malzeme/İşçilik) */
+    .card-details {
+        display: flex;
+        gap: 15px;
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px dashed #f1f5f9;
+        font-size: 12px;
+        color: #475569;
+    }
+    .detail-item { display: flex; align-items: center; gap: 4px; }
+    .detail-val { font-weight: 700; color: #334155; }
+
+    /* Toplam Fiyat Alanı */
+    .card-price { 
+        font-size: 20px; 
+        font-weight: 800; 
+        color: #dc2626; 
+        display: flex; 
+        align-items: center; 
+        justify-content: space-between; 
+        margin-top: 12px; 
+        background-color: #fef2f2;
+        padding: 8px;
+        border-radius: 6px;
+    }
     .card-unit { font-size: 12px; color: #64748b; font-weight: normal; }
-    .card-desc { font-size: 12px; color: #64748b; margin-top: 8px; border-top: 1px solid #f1f5f9; padding-top: 5px; }
+    .card-desc { font-size: 12px; color: #94a3b8; margin-top: 8px; font-style: italic;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -43,7 +74,7 @@ st.markdown("""
 DRIVE_KLASOR_ID = "1mTx-wY_D2W1QGgAV7_xYJMu4UQ3cYybY" 
 # ==========================================
 
-# --- DRIVE BAĞLANTISI (Senin Çalışan Fonksiyonların) ---
+# --- DRIVE BAĞLANTISI ---
 @st.cache_resource
 def get_drive_service():
     scopes = ['https://www.googleapis.com/auth/drive.readonly']
@@ -66,7 +97,6 @@ def list_files_in_folder(service, folder_id):
         st.error(f"Klasör okuma hatası: {e}")
         return []
 
-# --- KRİTİK DEĞİŞİKLİK: Caching hatasını önlemek için ExcelFile yerine DataFrame döndürüyoruz ---
 @st.cache_data(ttl=600)
 def load_excel_as_df(_service, file_id):
     try:
@@ -77,13 +107,11 @@ def load_excel_as_df(_service, file_id):
         while done is False:
             status, done = downloader.next_chunk()
         file_stream.seek(0)
-        # Burayı değiştirdik: Direkt okuyup tablo olarak döndürüyoruz (Hatayı çözen kısım)
         return pd.read_excel(file_stream)
     except Exception as e:
         st.error(f"Dosya indirme hatası: {e}")
         return None
 
-# Projeler için (Sayfalı okuma gerektiği için ExcelFile dönmeli, buna cache koymuyoruz)
 def load_excel_file_obj(_service, file_id):
     try:
         request = _service.files().get_media(fileId=file_id)
@@ -118,21 +146,18 @@ def main():
         st.warning(f"Bu klasörde Excel dosyası bulunamadı.")
         return
 
-    # Dosya Ayrıştırma
     malzeme_adaylari = [f for f in files if "malzeme" in f['name'].lower()]
     teklif_dosyalari = [f for f in files if "teklif" in f['name'].lower()]
     
-    # En güncel malzeme dosyasını bul
     if malzeme_adaylari:
         malzeme_adaylari.sort(key=lambda x: x.get('modifiedTime', ''), reverse=True)
         malzeme_dosyasi = malzeme_adaylari[0]
     else:
         malzeme_dosyasi = None
 
-    # --- SEKMELER ---
     tab_malzeme, tab_projeler = st.tabs(["🧱 Malzeme Kütüphanesi", "📋 Proje Teklifleri"])
 
-    # 1. SEKME: MALZEME (KART GÖRÜNÜMÜ EKLENDİ)
+    # --- SEKME 1: MALZEME (GÜNCELLENDİ) ---
     with tab_malzeme:
         if malzeme_dosyasi:
             tarih_ham = malzeme_dosyasi.get('modifiedTime', '')
@@ -140,48 +165,64 @@ def main():
             
             st.info(f"📂 Liste: **{malzeme_dosyasi['name']}** (Tarih: {tarih_guzel})")
             
-            # Veriyi yükle
             df = load_excel_as_df(service, malzeme_dosyasi['id'])
             
             if df is not None:
-                # Arama
                 search_term = st.text_input("🔍 Malzeme Ara:", placeholder="Profil, Alçı, Boya...")
                 if search_term:
                      df = df[df.astype(str).apply(lambda x: x.str.contains(search_term, case=False, na=False)).any(axis=1)]
 
-                # GÖRÜNÜM SEÇİMİ (YENİ)
                 view = st.radio("Görünüm:", ["Kart Görünümü", "Liste Görünümü"], horizontal=True, label_visibility="collapsed")
 
                 if view == "Kart Görünümü":
                     if df.empty:
                         st.warning("Sonuç bulunamadı.")
                     else:
-                        cols = st.columns(3) # Mobilde tekli, PC'de 3'lü
+                        cols = st.columns(3) 
                         for index, row in df.iterrows():
                             with cols[index % 3]:
-                                # Güvenli Veri Çekme
+                                # --- VERİ ÇEKME KISMI (GÜNCELLENDİ) ---
                                 ad = row.get('Malzeme Adı', '-')
                                 kod = row.get('Kod', '')
-                                fiyat = row.get('Toplam Birim Fiyat', 0)
+                                
+                                # Fiyatları Güvenli Çek
+                                f_malzeme = row.get('Malzeme Birim Fiyat', 0)
+                                f_iscilik = row.get('İşçilik Birim Fiyat', 0)
+                                f_toplam = row.get('Toplam Birim Fiyat', 0)
+                                
                                 birim = row.get('Birim', 'Adet')
+                                
+                                # Para Birimi (Excel'de sütun varsa alır, yoksa TL yapar)
+                                para_birimi = row.get('Para Birimi', 'TL')
+                                if pd.isna(para_birimi): para_birimi = "TL"
+
                                 aciklama = row.get('Açıklama', '')
 
-                                # Kart HTML
+                                # --- YENİ KART TASARIMI ---
                                 st.markdown(f"""
                                 <div class="material-card">
                                     <div class="card-code">#{kod}</div>
                                     <div class="card-title">{ad}</div>
-                                    <div class="card-price">{fiyat:,.2f} ₺ <span class="card-unit">/ {birim}</span></div>
+                                    
+                                    <div class="card-details">
+                                        <div class="detail-item">🧱 Malz: <span class="detail-val">{f_malzeme:,.2f}</span></div>
+                                        <div class="detail-item">👷 İşç: <span class="detail-val">{f_iscilik:,.2f}</span></div>
+                                    </div>
+
+                                    <div class="card-price">
+                                        {f_toplam:,.2f} {para_birimi}
+                                        <span class="card-unit">/ {birim}</span>
+                                    </div>
+                                    
                                     <div class="card-desc">{aciklama if pd.notna(aciklama) else ''}</div>
                                 </div>
                                 """, unsafe_allow_html=True)
                 else:
-                    # Klasik Liste
                     st.dataframe(df, use_container_width=True, hide_index=True)
         else:
             st.info("Henüz yüklenmiş bir malzeme listesi yok.")
 
-    # 2. SEKME: PROJELER (Senin Kodunun Aynısı)
+    # --- SEKME 2: PROJELER (DEĞİŞMEDİ) ---
     with tab_projeler:
         if teklif_dosyalari:
             isimler = [f['name'] for f in teklif_dosyalari]
@@ -191,7 +232,6 @@ def main():
             
             if secilen_dosya:
                 with st.spinner("Proje açılıyor..."):
-                    # Burada cache kullanmıyoruz, çünkü tüm Excel nesnesi lazım
                     xls_proj = load_excel_file_obj(service, secilen_dosya['id'])
                     
                     if xls_proj:
