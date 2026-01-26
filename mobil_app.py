@@ -10,14 +10,14 @@ import io
 # ==========================================
 DRIVE_KLASOR_ID = "1mTx-wY_D2W1QGgAV7_xYJMu4UQ3cYybY" 
 
-# Logo Linki (Daha basit bir ikon)
+# İnşaat İkonu (Logo)
 LOGO_URL = "https://cdn-icons-png.flaticon.com/512/2666/2666505.png"
 # ==========================================
 
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="ArtikaPro Bulut", page_icon="🏗️", layout="wide")
 
-# --- CSS TASARIMI (GÜNCELLENDİ) ---
+# --- CSS TASARIMI ---
 st.markdown("""
 <style>
     /* Sekme Tasarımı */
@@ -72,31 +72,6 @@ st.markdown("""
     }
     .card-unit { font-size: 12px; color: #64748b; font-weight: normal; }
     .card-desc { font-size: 12px; color: #94a3b8; margin-top: 8px; font-style: italic;}
-
-    /* Header Alanı (Logo ve Başlık İçin Özel Stil) */
-    .header-container {
-        display: flex;
-        align-items: center;
-        gap: 20px;
-        padding-bottom: 20px;
-        border-bottom: 1px solid #e5e7eb;
-        margin-bottom: 20px;
-    }
-    .header-logo img {
-        width: 80px;
-        height: 80px;
-        object-fit: contain;
-    }
-    .header-text h1 {
-        margin: 0;
-        font-size: 28px;
-        color: #1f2937;
-    }
-    .header-text p {
-        margin: 0;
-        color: #6b7280;
-        font-size: 14px;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -167,19 +142,17 @@ def main():
     service = get_drive_service()
     if not service: return
 
-    # --- BAŞLIK ALANI (HTML YÖNTEMİ - EN GARANTİSİ) ---
-    # st.image yerine kendi HTML yapımızı kuruyoruz.
-    st.markdown(f"""
-    <div class="header-container">
-        <div class="header-logo">
-            <img src="{LOGO_URL}" alt="Logo">
-        </div>
-        <div class="header-text">
-            <h1>ArtikaPro Bulut</h1>
-            <p>Saha ve Ofis Arasında Kesintisiz Veri Akışı</p>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    # --- LOGO VE BAŞLIK (Native Yöntem) ---
+    # Logoya biraz daha fazla yer ayırdık [2, 10]
+    col1, col2 = st.columns([2, 10]) 
+    
+    with col1:
+        # width=80 diyerek logoyu sabitliyoruz.
+        st.image(LOGO_URL, width=80) 
+        
+    with col2:
+        st.title("ArtikaPro Bulut")
+        st.caption("Saha ve Ofis Arasında Kesintisiz Veri Akışı")
 
     # --- DOSYALARI ÇEK ---
     with st.spinner("Dosyalar taranıyor..."):
