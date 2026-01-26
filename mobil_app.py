@@ -15,12 +15,12 @@ LOGO_URL = "https://cdn-icons-png.flaticon.com/512/2666/2666505.png"
 # --- SAYFA YAPILANDIRMASI ---
 st.set_page_config(page_title="ArtikaPro Bulut", page_icon="🏗️", layout="wide")
 
-# --- CSS TASARIMI (Mavi Başlıklar ve Temiz Görünüm) ---
+# --- CSS TASARIMI (TAMİR EDİLDİ) ---
 st.markdown("""
 <style>
-    /* Üst Boşluğu Kaldır */
+    /* Üst Boşluk Ayarı (Yazının kesilmesini önlemek için margin artırıldı) */
     .block-container {
-        padding-top: 1rem !important;
+        padding-top: 2rem !important; 
         margin-top: 0rem !important;
     }
     
@@ -32,27 +32,45 @@ st.markdown("""
     /* --- NORMAL MALZEME KARTI --- */
     .material-card {
         background-color: #ffffff;
-        border-radius: 10px;
-        padding: 15px;
-        margin-bottom: 15px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 16px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
         border: 1px solid #e2e8f0;
-        border-left: 5px solid #FF4B4B; /* Kırmızı Çizgi */
+        border-left: 5px solid #FF4B4B;
     }
-    .card-code { font-size: 11px; color: #94a3b8; font-weight: bold; letter-spacing: 0.5px; }
-    .card-title { font-size: 16px; font-weight: 700; color: #1e293b; margin: 5px 0; line-height: 1.3; }
+    .card-code { 
+        font-size: 11px; 
+        color: #94a3b8; 
+        font-weight: bold; 
+        letter-spacing: 0.5px;
+        margin-bottom: 4px;
+    }
+    .card-title { 
+        font-size: 16px; 
+        font-weight: 700; 
+        color: #1e293b; 
+        margin-bottom: 10px; 
+        line-height: 1.4; 
+    }
     
     .card-details {
         display: flex;
         flex-wrap: wrap;
         gap: 8px;
-        margin-top: 8px;
         padding-top: 8px;
         border-top: 1px dashed #f1f5f9;
         font-size: 11px;
         color: #475569;
     }
-    .detail-item { display: flex; align-items: center; gap: 4px; background-color: #f8fafc; padding: 2px 6px; border-radius: 4px; }
+    .detail-item { 
+        display: flex; 
+        align-items: center; 
+        gap: 4px; 
+        background-color: #f8fafc; 
+        padding: 4px 8px; 
+        border-radius: 4px; 
+    }
     .detail-val { font-weight: 700; color: #334155; }
 
     .card-price { 
@@ -64,47 +82,58 @@ st.markdown("""
         justify-content: space-between; 
         margin-top: 12px; 
         background-color: #fef2f2;
-        padding: 8px;
-        border-radius: 6px;
+        padding: 10px;
+        border-radius: 8px;
     }
     .card-unit { font-size: 12px; color: #64748b; font-weight: normal; }
     .card-desc { font-size: 11px; color: #94a3b8; margin-top: 8px; font-style: italic;}
 
     /* --- MAVİ BAŞLIK KARTI (KATEGORİLER İÇİN) --- */
     .header-card {
-        background-color: #e3f2fd; /* Açık Mavi */
-        color: #1565c0; /* Koyu Mavi Yazı */
-        padding: 12px;
+        background-color: #e3f2fd;
+        color: #1565c0;
+        padding: 15px;
         border-radius: 8px;
-        margin-bottom: 15px;
+        margin-bottom: 20px;
         font-weight: 800;
-        font-size: 16px;
+        font-size: 18px;
         text-align: center;
         border: 1px solid #bbdefb;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        text-transform: uppercase; /* Hepsi Büyük Harf */
+        text-transform: uppercase;
         letter-spacing: 1px;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# --- YARDIMCI FONKSİYONLAR ---
+# --- YARDIMCI FONKSİYONLAR (GÜÇLENDİRİLDİ) ---
 def clean_text(text):
-    """None, nan veya nan yazılarını temizler, boş string döndürür."""
+    """None, nan, boşluk temizler."""
     if text is None: return ""
-    if pd.isna(text): return ""
     s = str(text).strip()
-    if s.lower() in ['nan', 'none', '', '0']: return ""
+    if s.lower() in ['nan', 'none', '', 'null']: return ""
     return s
 
 def format_para(tutar):
-    """Sayıyı TR formatına (1.234,56) çevirir."""
+    """
+    Sayıyı TR formatına (1.234,56) çevirir.
+    Gelen veri string olsa bile temizleyip sayıya çevirir.
+    """
     if pd.isna(tutar): return "0,00"
+    
+    # Temizleme: Eğer string ise içindeki 'TL', boşluk vs temizle
+    if isinstance(tutar, str):
+        tutar = tutar.replace('TL', '').replace(' ', '').strip()
+        if tutar == '': return "0,00"
+        
     try:
         val = float(tutar)
         if val == 0: return "0,00"
-        # İngiliz formatı (1,234.56) -> TR formatı (1.234,56) değişimi
-        return "{:,.2f}".format(val).replace(",", "X").replace(".", ",").replace("X", ".")
+        
+        # Formatlama: {:,.2f} -> 1,234.56 yapar
+        formatted = "{:,.2f}".format(val)
+        
+        # Yer değiştirme: 1,234.56 -> 1.234,56
+        return formatted.replace(",", "X").replace(".", ",").replace("X", ".")
     except:
         return "0,00"
 
@@ -165,14 +194,17 @@ def main():
     service = get_drive_service()
     if not service: return
 
-    # --- HEADER ---
+    # --- HEADER (Yazı kesilmesini önleyen yeni stil) ---
     col1, col2 = st.columns([1, 10], gap="small")
     with col1:
         st.image(LOGO_URL, width=70)
     with col2:
+        # line-height ve padding ile yazının kesilmesini engelliyoruz
         st.markdown("""
-            <h1 style='margin-top: 0; padding-top: 0; font-size: 2.2rem;'>ArtikaPro Bulut</h1>
-            <p style='margin-top: -10px; color: gray;'>Saha ve Ofis Arasında Kesintisiz Veri Akışı</p>
+            <div style="padding-top: 5px;">
+                <h1 style='margin: 0; padding: 0; font-size: 2.2rem; line-height: 1.2;'>ArtikaPro Bulut</h1>
+                <p style='margin: 0; color: gray; font-size: 1rem;'>Saha ve Ofis Arasında Kesintisiz Veri Akışı</p>
+            </div>
         """, unsafe_allow_html=True)
 
     # --- DOSYA TARAMA ---
@@ -226,17 +258,15 @@ def main():
                                 birim = clean_text(row.get('Birim'))
                                 aciklama = clean_text(row.get('Açıklama'))
                                 
-                                # Fiyatlar (Sayısal)
+                                # Fiyatları ve Para Birimini Al
                                 f_malzeme = row.get('Malzeme Birim Fiyat', 0)
                                 f_iscilik = row.get('İşçilik Birim Fiyat', 0)
                                 f_toplam = row.get('Toplam Birim Fiyat', 0)
-                                
-                                # Para Birimi
                                 para_birimi = clean_text(row.get('Para Birimi'))
                                 if not para_birimi: para_birimi = "TL"
 
                                 # --- BAŞLIK SATIRI TESPİTİ ---
-                                # Kural: Fiyatı 0 (veya boş) OLAN ve Birimi boş OLAN satır Başlıktır.
+                                # Eğer 'Malzeme Birim Fiyat' boşsa veya 0 ise ve 'Birim' boşsa BAŞLIKTIR
                                 is_header = False
                                 try:
                                     tutar_kontrol = float(f_toplam)
@@ -246,31 +276,37 @@ def main():
                                 if tutar_kontrol == 0 and birim == "":
                                     is_header = True
                                 
-                                # --- HTML KART BASIMI ---
+                                # --- KART BASIMI ---
                                 if is_header:
-                                    # MAVİ BAŞLIK KUTUSU (Sadece isim yazar)
-                                    st.markdown(f"""
-                                    <div class="header-card">
-                                        {ad}
-                                    </div>
-                                    """, unsafe_allow_html=True)
+                                    # MAVİ BAŞLIK (Sadece isim yazar, 'None' yazmaz)
+                                    if ad: # Ad boş değilse bas
+                                        st.markdown(f"""
+                                        <div class="header-card">
+                                            {ad}
+                                        </div>
+                                        """, unsafe_allow_html=True)
                                 else:
-                                    # NORMAL ÜRÜN KARTI
+                                    # NORMAL KART
                                     birim_str = f"/ {birim}" if birim else ""
                                     kod_html = f'<div class="card-code">#{kod}</div>' if kod else ""
                                     
+                                    # Formatlanmış Fiyatlar (1.250,00 Şeklinde)
+                                    str_malz = format_para(f_malzeme)
+                                    str_isc = format_para(f_iscilik)
+                                    str_top = format_para(f_toplam)
+
                                     html_content = f"""
                                     <div class="material-card">
                                         {kod_html}
                                         <div class="card-title">{ad}</div>
                                         
                                         <div class="card-details">
-                                            <div class="detail-item">🧱 Malz: <span class="detail-val">{format_para(f_malzeme)} {para_birimi}</span></div>
-                                            <div class="detail-item">👷 İşç: <span class="detail-val">{format_para(f_iscilik)} {para_birimi}</span></div>
+                                            <div class="detail-item">🧱 Malz: <span class="detail-val">{str_malz} {para_birimi}</span></div>
+                                            <div class="detail-item">👷 İşç: <span class="detail-val">{str_isc} {para_birimi}</span></div>
                                         </div>
                                         
                                         <div class="card-price">
-                                            {format_para(f_toplam)} {para_birimi}
+                                            {str_top} {para_birimi}
                                             <span class="card-unit">{birim_str}</span>
                                         </div>
                                         
@@ -284,7 +320,7 @@ def main():
             st.info("Henüz yüklenmiş bir malzeme listesi yok.")
 
     # ----------------------------------------
-    # SEKME 2: PROJELER (Standart)
+    # SEKME 2: PROJELER
     # ----------------------------------------
     with tab_projeler:
         if teklif_dosyalari:
