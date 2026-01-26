@@ -4,6 +4,7 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 import io
+import numpy as np
 
 # ==========================================
 # AYARLAR
@@ -70,10 +71,16 @@ st.markdown("""
 
 # --- YARDIMCI FONKSİYONLAR ---
 def clean_text(text):
-    """None, nan temizler."""
+    """
+    Her türlü boşluğu (None, nan, boş string) temizler.
+    Asla 'None' stringi döndürmez.
+    """
     if text is None: return ""
+    # Pandas NaN kontrolü
+    if pd.isna(text): return ""
+    
     s = str(text).strip()
-    if s.lower() in ['nan', 'none', '', 'null']: return ""
+    if s.lower() in ['nan', 'none', '', 'null', 'nat']: return ""
     return s
 
 def format_para_str(tutar):
@@ -91,18 +98,21 @@ def apply_table_style(df):
     Veriyi sayı (float) olarak tutar ama gösterirken Türkçe formatlar.
     Bu sayede SAĞA YASLI kalır.
     """
-    # 1. Sayısal sütunları bul
+    # 1. Boş satırları temizle (İhtiyaten)
+    df = df.dropna(how='all')
+    
+    # 2. Sayısal sütunları bul
     num_cols = df.select_dtypes(include=['float64', 'int64']).columns
     
-    # 2. Format Fonksiyonu (TR)
+    # 3. Format Fonksiyonu (TR)
     def tr_fmt_func(x):
         if pd.isna(x): return ""
         return "{:,.2f}".format(x).replace(",", "X").replace(".", ",").replace("X", ".")
 
-    # 3. Styler Oluştur
+    # 4. Styler Oluştur
     styler = df.style.format({col: tr_fmt_func for col in num_cols})
     
-    # 4. Sağa Yasla (Garanti olsun diye hem header hem cell)
+    # 5. Sağa Yasla
     styler = styler.set_properties(subset=num_cols, **{'text-align': 'right'})
     
     return styler
@@ -140,7 +150,19 @@ def load_excel_as_df(_service, file_id):
         while done is False:
             status, done = downloader.next_chunk()
         file_stream.seek(0)
-        return pd.read_excel(file_stream)
+        
+        # Excel'i oku
+        df = pd.read_excel(file_stream)
+        
+        # --- KRİTİK TEMİZLİK ---
+        # 1. Tamamen boş satırları sil
+        df.dropna(how='all', inplace=True)
+        
+        # 2. Eğer 'Malzeme Adı' sütunu varsa ve boşsa, o satırı almayalım (Başlık değilse)
+        # Ama başlık satırlarını da korumalıyız. Başlık satırlarında sadece İsim olur, fiyat olmaz.
+        # Bu yüzden en güvenlisi: Sadece TAMAMEN boş satırları silmek.
+        
+        return df
     except Exception as e:
         st.error(f"Dosya indirme hatası: {e}")
         return None
@@ -207,6 +229,12 @@ def main():
             df = load_excel_as_df(service, malzeme_dosyasi['id'])
             
             if df is not None:
+                # --- İLAVE GÜVENLİK FİLTRESİ ---
+                # Eğer 'Malzeme Adı' boşsa o satırı gösterme (Boş kartları engeller)
+                if 'Malzeme Adı' in df.columns:
+                     df = df[df['Malzeme Adı'].notna()]
+                     df = df[df['Malzeme Adı'].astype(str).str.strip() != ""]
+
                 search_term = st.text_input("🔍 Malzeme Ara:", placeholder="Ara...")
                 if search_term:
                      df = df[df.astype(str).apply(lambda x: x.str.contains(search_term, case=False, na=False)).any(axis=1)]
@@ -220,7 +248,7 @@ def main():
                         cols = st.columns(3) 
                         for index, row in df.iterrows():
                             with cols[index % 3]:
-                                # Veriler
+                                # Veriler (Güçlü Temizlik)
                                 ad = clean_text(row.get('Malzeme Adı'))
                                 kod = clean_text(row.get('Kod'))
                                 birim = clean_text(row.get('Birim'))
@@ -231,24 +259,25 @@ def main():
                                 f_toplam = row.get('Toplam Birim Fiyat', 0)
                                 para_birimi = clean_text(row.get('Para Birimi')) or "TL"
 
-                                # Başlık Kontrolü (Fiyat 0 ve Birim Boşsa)
+                                # Başlık Kontrolü
                                 is_header = False
                                 try:
                                     tutar_val = float(f_toplam)
                                 except:
                                     tutar_val = 0
                                 
+                                # Eğer tutar 0 ise ve birim boşsa -> Bu bir BAŞLIKTIR
                                 if tutar_val == 0 and birim == "":
                                     is_header = True
                                 
                                 if is_header:
+                                    # Mavi kartı sadece 'ad' doluysa bas
                                     if ad: 
                                         st.markdown(f'<div class="header-card">{ad}</div>', unsafe_allow_html=True)
                                 else:
                                     birim_str = f"/ {birim}" if birim else ""
                                     kod_html = f'<div class="card-code">#{kod}</div>' if kod else ""
                                     
-                                    # Kartlar için string format (Kartlar zaten özel tasarım, hizalama sorunu olmaz)
                                     str_malz = format_para_str(f_malzeme)
                                     str_isc = format_para_str(f_iscilik)
                                     str_top = format_para_str(f_toplam)
@@ -275,7 +304,7 @@ def main():
             st.info("Malzeme listesi yok.")
 
     # ----------------------------------------
-    # SEKME 2: PROJELER (TABLO HİZALAMA DÜZELTİLDİ)
+    # SEKME 2: PROJELER (TABLO HİZALAMA)
     # ----------------------------------------
     with tab_projeler:
         if teklif_dosyalari:
@@ -293,8 +322,6 @@ def main():
                         if "İcmal Tablosu" in sheet_names:
                             st.subheader("📊 İcmal Özeti")
                             df_icmal = pd.read_excel(xls_proj, "İcmal Tablosu")
-                            
-                            # Yeni Formatlayıcı (Styler)
                             st.dataframe(apply_table_style(df_icmal), use_container_width=True)
                             st.divider()
                         
@@ -303,7 +330,6 @@ def main():
                             sayfa = st.pills("Detay Sayfası:", detay_sayfalari, default=detay_sayfalari[0])
                             if sayfa:
                                 df_detay = pd.read_excel(xls_proj, sayfa)
-                                # Yeni Formatlayıcı (Styler)
                                 st.dataframe(apply_table_style(df_detay), use_container_width=True)
         else:
             st.info("Proje teklifi yok.")
