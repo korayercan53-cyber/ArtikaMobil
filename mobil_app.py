@@ -67,58 +67,55 @@ def format_para_str(tutar):
         return "0,00"
 
 def apply_table_style(df):
-    # Veri kopyasını al ve tamamen boş satırları sil
+    # Veri kopyasını al
     df = df.copy()
+    # Tamamen boş satırları sil
     df = df.dropna(how='all')
     
     # -------------------------------------------------------
-    # 1. SÜTUN AYRIŞTIRMA VE TEMİZLİK
+    # 1. SAYISAL SÜTUNLARI BELİRLE VE ZORLA TİP DÖNÜŞTÜR
     # -------------------------------------------------------
-    # Fiyat/Tutar içeren sütunları belirle
     keywords = ["fiyat", "tutar", "toplam", "meblağ", "b.f", "iskonto", "kdv", "hakediş"]
     num_cols = []
     
     for col in df.columns:
-        # İsminde anahtar kelime varsa VEYA zaten sayı tipindeyse
+        # İsminde anahtar kelime varsa veya zaten sayısal ise
         if any(k in str(col).lower() for k in keywords) or pd.api.types.is_numeric_dtype(df[col]):
             num_cols.append(col)
-            # Sayıya çevir (Hata verenleri NaN yap)
+            # Kritik Hamle: Hepsini zorla float yap. Hata verenleri (None, string vb) NaN'a çevir.
             df[col] = pd.to_numeric(df[col], errors='coerce')
 
-    # Mükerrer sütun isimlerini temizle
     num_cols = list(set(num_cols))
 
-    # Sayısal OLMAYAN (Metin) sütunları temizle
+    # -------------------------------------------------------
+    # 2. METİN SÜTUNLARINI TEMİZLE
+    # -------------------------------------------------------
     other_cols = [c for c in df.columns if c not in num_cols]
     for col in other_cols:
-        # Önce boşlukları doldur
-        df[col] = df[col].fillna("")
-        # Hepsini metne (string) çevir
+        df[col] = df[col].fillna("") # None -> ""
         df[col] = df[col].astype(str)
-        # "nan", "None", "NaN", "null" yazılarını SİL
+        # Regex ile inatçı "None", "nan" yazılarını temizle
         df[col] = df[col].replace(r'(?i)^(nan|none|null)$', "", regex=True)
-        # Sağdan soldan boşlukları al
         df[col] = df[col].str.strip()
 
     # -------------------------------------------------------
-    # 2. GÖRÜNÜM AYARLARI (STYLER)
+    # 3. GÖRÜNÜM AYARLARI (STYLER)
     # -------------------------------------------------------
-
-    # Formatlayıcı Fonksiyon (Sayılar için)
+    
+    # Formatlayıcı Fonksiyon
     def tr_fmt(x):
-        # Değer boşsa, None ise veya NaN ise -> BOŞLUK DÖNDÜR
-        if pd.isna(x) or x is None or str(x).strip() == "":
-            return ""
+        # Eğer değer NaN (boş) ise
+        if pd.isna(x) or x is None:
+            return ""  # Kesinlikle boş string döndür
         try:
-            # Sayı formatı: 1.234,56
+            # Değer varsa formatla
             return "{:,.2f}".format(x).replace(",", "X").replace(".", ",").replace("X", ".")
         except:
             return ""
 
-    # Başlık (Header) Satırı Renklendirme Mantığı
+    # Başlık Satırı Renklendirme
     def highlight_headers(row):
         val = row.get('Birim', "")
-        # Birim sütunu boşsa, bu satır bir başlıktır
         if str(val).strip() == "":
             return ['background-color: #dbeafe; color: #1e3a8a; font-weight: bold'] * len(row)
         return [''] * len(row)
@@ -127,9 +124,9 @@ def apply_table_style(df):
     styler = df.style.apply(highlight_headers, axis=1)
     
     if num_cols:
-        # 1. Formatı uygula (na_rep="" diyerek NaN değerleri boşluk yapıyoruz)
+        # na_rep="" parametresi NaN değerleri boş gösterir
         styler = styler.format(tr_fmt, subset=num_cols, na_rep="")
-        # 2. Bu sütunları SAĞA yasla
+        # Sağa yaslama
         styler = styler.set_properties(subset=num_cols, **{'text-align': 'right'})
     
     return styler
