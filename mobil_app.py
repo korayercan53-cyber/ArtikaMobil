@@ -19,7 +19,7 @@ st.set_page_config(page_title="ArtikaPro Bulut", page_icon="🏗️", layout="wi
 # --- CSS TASARIMI ---
 st.markdown("""
 <style>
-    /* Üst boşluğu daha da azalttık */
+    /* Üst boşluğu azalttık */
     .block-container { padding-top: 1rem !important; margin-top: 0rem !important; }
     header {visibility: hidden;} 
     .stTabs [data-baseweb="tab-list"] { gap: 8px; }
@@ -67,31 +67,32 @@ def format_para_str(tutar):
         return "0,00"
 
 def apply_table_style(df):
-    # Veri kopyasını al
+    """
+    Tabloyu biçimlendirir:
+    1. Sayısal sütunları (Fiyat vb.) "1.234,56" formatında METNE çevirir (None yok olur).
+    2. Metne çevrilen bu sütunları CSS ile SAĞA yaslar.
+    3. Başlık satırlarını renklendirir.
+    """
     df = df.copy()
     df = df.dropna(how='all')
     
-    # -------------------------------------------------------
-    # 1. SAYISAL SÜTUNLARI BELİRLE
-    # -------------------------------------------------------
+    # 1. Sayısal Sütunları Tespit Et
     keywords = ["fiyat", "tutar", "toplam", "meblağ", "b.f", "iskonto", "kdv", "hakediş"]
     num_cols = []
     
     for col in df.columns:
         if any(k in str(col).lower() for k in keywords) or pd.api.types.is_numeric_dtype(df[col]):
             num_cols.append(col)
-            
+    
     num_cols = list(set(num_cols))
 
-    # -------------------------------------------------------
-    # 2. ÖZEL FORMATLAMA (None -> Boşluk, Sayı -> 1.234,56)
-    # -------------------------------------------------------
+    # 2. Sayıları Özel Formatlı Metne Çevir (None Temizliği)
     for col in num_cols:
         # Önce sayısal yap
         s_numeric = pd.to_numeric(df[col], errors='coerce')
         
         def convert_to_formatted_string(val):
-            # Değer boşsa, None ise veya NaN ise -> BOŞLUK
+            # Boşsa, None ise -> BOŞLUK (None yazmaz)
             if pd.isna(val) or val is None or str(val).strip() == "":
                 return ""
             try:
@@ -103,21 +104,15 @@ def apply_table_style(df):
         # Sütunu metne (string) çevir
         df[col] = s_numeric.apply(convert_to_formatted_string)
 
-    # -------------------------------------------------------
-    # 3. DİĞER METİN SÜTUNLARINI TEMİZLE
-    # -------------------------------------------------------
+    # 3. Diğer Metin Sütunlarını Temizle
     other_cols = [c for c in df.columns if c not in num_cols]
     for col in other_cols:
         df[col] = df[col].fillna("")
         df[col] = df[col].astype(str)
-        # "nan", "None" gibi metinleri sil
         df[col] = df[col].replace(r'(?i)^(nan|none|null)$', "", regex=True)
         df[col] = df[col].str.strip()
 
-    # -------------------------------------------------------
-    # 4. GÖRÜNÜM AYARLARI (STYLER)
-    # -------------------------------------------------------
-    
+    # 4. Stil ve Hizalama
     def highlight_headers(row):
         val = row.get('Birim', "")
         if str(val).strip() == "":
@@ -126,18 +121,30 @@ def apply_table_style(df):
 
     styler = df.style.apply(highlight_headers, axis=1)
     
-    # SAĞA YASLAMA (CSS ile zorla)
+    # SAĞA YASLAMA (CSS ile ZORLA)
     if num_cols:
-        # Bu CSS kuralları hücrenin içindeki metni sağa iter
-        styles = [
-            {'selector': 'td', 'props': [('text-align', 'right'), ('display', 'block'), ('width', '100%')]},
-            {'selector': 'th', 'props': [('text-align', 'right')]} # Başlıkları da sağa yasla
-        ]
-        # set_properties yerine map veya set_table_styles kullanabiliriz ama 
-        # set_properties en garantisidir:
-        styler = styler.set_properties(subset=num_cols, **{'text-align': 'right', 'display': 'block'})
+        # Metin oldukları için display: block ve width: 100% ile hücreyi doldurtup sağa itiyoruz
+        styler = styler.set_properties(subset=num_cols, **{
+            'text-align': 'right', 
+            'display': 'block', 
+            'width': '100%'
+        })
     
     return styler
+
+# --- DRIVE BAĞLANTISI ---
+@st.cache_resource
+def get_drive_service():
+    scopes = ['https://www.googleapis.com/auth/drive.readonly']
+    if "gcp_service_account" in st.secrets:
+        try:
+            creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scopes)
+            return build('drive', 'v3', credentials=creds)
+        except Exception as e:
+            st.error(f"Secrets hatası: {e}")
+            return None
+    st.error("Kimlik doğrulama anahtarı bulunamadı!")
+    return None
 
 @st.cache_data(ttl=600)
 def list_files_in_folder(_service, folder_id): 
@@ -251,6 +258,7 @@ def main():
                                 f_iscilik = row.get('İşçilik Birim Fiyat', 0)
                                 f_toplam = row.get('Toplam Birim Fiyat', 0)
                                 para_birimi = clean_text(row.get('Para Birimi')) or "TL"
+                                
                                 is_header = False
                                 try: tutar_val = float(f_toplam)
                                 except: tutar_val = 0
@@ -264,13 +272,35 @@ def main():
                                     str_malz = format_para_str(f_malzeme)
                                     str_isc = format_para_str(f_iscilik)
                                     str_top = format_para_str(f_toplam)
-                                    html_content = f"""<div class="material-card">{kod_html}<div class="card-title">{ad}</div><div class="card-details"><div class="detail-item">🧱 Malz: <span class="detail-val">{str_malz} {para_birimi}</span></div><div class="detail-item">👷 İşç: <span class="detail-val">{str_isc} {para_birimi}</span></div></div><div class="card-price">{str_top} {para_birimi}<span class="card-unit">{birim_str}</span></div><div class="card-desc">{aciklama}</div></div>"""
+                                    html_content = f"""
+                                    <div class="material-card">
+                                        {kod_html}
+                                        <div class="card-title">{ad}</div>
+                                        <div class="card-details">
+                                            <div class="detail-item">🧱 Malz: <span class="detail-val">{str_malz} {para_birimi}</span></div>
+                                            <div class="detail-item">👷 İşç: <span class="detail-val">{str_isc} {para_birimi}</span></div>
+                                        </div>
+                                        <div class="card-price">
+                                            {str_top} {para_birimi}
+                                            <span class="card-unit">{birim_str}</span>
+                                        </div>
+                                        <div class="card-desc">{aciklama}</div>
+                                    </div>
+                                    """
                                     st.markdown(html_content, unsafe_allow_html=True)
                 else:
-                    rename_map = {"Malzeme Birim Fiyat": "Malzeme B.F", "İşçilik Birim Fiyat": "İşçilik B.F", "Toplam Birim Fiyat": "Toplam B.F", "Para Birimi": "P.B", "Tanım": "Tanım", "Poz No": "Poz No", "Birim": "Birim"}
+                    rename_map = {
+                        "Malzeme Birim Fiyat": "Malzeme B.F",
+                        "İşçilik Birim Fiyat": "İşçilik B.F",
+                        "Toplam Birim Fiyat": "Toplam B.F",
+                        "Para Birimi": "P.B",
+                        "Tanım": "Tanım", 
+                        "Poz No": "Poz No", 
+                        "Birim": "Birim"
+                    }
                     df_display = df.rename(columns=rename_map)
                     
-                    # STYLER KULLANIYORUZ, COLUMN_CONFIG YOK
+                    # Style uygulanmış DataFrame
                     styled_df = apply_table_style(df_display)
                     
                     st.dataframe(styled_df, use_container_width=True, hide_index=True)
@@ -290,15 +320,15 @@ def main():
             if secilen_dosya:
                 with st.spinner("Proje detayları yükleniyor..."):
                     file_bytes = download_excel_bytes(service, secilen_dosya['id'])
+                    
                     if file_bytes:
                         xls_proj = pd.ExcelFile(io.BytesIO(file_bytes))
-                        sheet_names = xls_proj.sheet_names
                         
+                        sheet_names = xls_proj.sheet_names
                         if "İcmal Tablosu" in sheet_names:
                             st.subheader("📊 İcmal Özeti")
                             df_icmal = pd.read_excel(xls_proj, "İcmal Tablosu")
                             
-                            # COLUMN CONFIG SİLİNDİ, SADECE STYLER
                             styled_icmal = apply_table_style(df_icmal)
                             st.dataframe(styled_icmal, use_container_width=True)
                             st.divider()
@@ -309,7 +339,6 @@ def main():
                             if sayfa:
                                 df_detay = pd.read_excel(xls_proj, sayfa)
                                 
-                                # COLUMN CONFIG SİLİNDİ, SADECE STYLER
                                 styled_detay = apply_table_style(df_detay)
                                 st.dataframe(styled_detay, use_container_width=True)
         else:
