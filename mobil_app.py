@@ -71,54 +71,26 @@ def apply_table_style(df):
     df = df.copy()
     df = df.dropna(how='all')
     
-    # -------------------------------------------------------
-    # 1. SAYISAL SÜTUNLARI BELİRLE
-    # -------------------------------------------------------
+    # 1. SAYISAL SÜTUNLARI BELİRLE VE FLOAT YAP
     keywords = ["fiyat", "tutar", "toplam", "meblağ", "b.f", "iskonto", "kdv", "hakediş"]
     num_cols = []
     
     for col in df.columns:
         if any(k in str(col).lower() for k in keywords) or pd.api.types.is_numeric_dtype(df[col]):
             num_cols.append(col)
+            # Sayıya çevir (Hata verenler NaN olur)
+            df[col] = pd.to_numeric(df[col], errors='coerce')
     
-    num_cols = list(set(num_cols))
-
-    # -------------------------------------------------------
-    # 2. SAYILARI METNE ÇEVİR (None Yazısını Yok Etmek İçin)
-    # -------------------------------------------------------
-    # Sayıları formatlı metne (String) çeviriyoruz. 
-    # Böylece boş olanlar "None" değil, tamamen boş string "" oluyor.
-    for col in num_cols:
-        # Önce sayısal yap
-        s_numeric = pd.to_numeric(df[col], errors='coerce')
-        
-        def convert_to_formatted_string(val):
-            if pd.isna(val):
-                return ""  # None yerine boşluk
-            try:
-                # TR Formatı
-                return "{:,.2f}".format(val).replace(",", "X").replace(".", ",").replace("X", ".")
-            except:
-                return ""
-        
-        # Sütunu metne çeviriyoruz
-        df[col] = s_numeric.apply(convert_to_formatted_string)
-
-    # -------------------------------------------------------
-    # 3. DİĞER METİN SÜTUNLARINI TEMİZLE
-    # -------------------------------------------------------
+    # 2. METİN SÜTUNLARINI TEMİZLE
     other_cols = [c for c in df.columns if c not in num_cols]
     for col in other_cols:
         df[col] = df[col].fillna("")
         df[col] = df[col].astype(str)
+        # "nan", "None" yazılarını sil
         df[col] = df[col].replace(r'(?i)^(nan|none|null)$', "", regex=True)
         df[col] = df[col].str.strip()
 
-    # -------------------------------------------------------
-    # 4. GÖRÜNÜM AYARLARI (GÜÇLÜ CSS İLE SAĞA YASLA)
-    # -------------------------------------------------------
-    
-    # Başlık Satırı Renklendirme
+    # 3. BAŞLIK RENKLENDİRME (Styler sadece renk için kalsın)
     def highlight_headers(row):
         val = row.get('Birim', "")
         if str(val).strip() == "":
@@ -126,19 +98,6 @@ def apply_table_style(df):
         return [''] * len(row)
 
     styler = df.style.apply(highlight_headers, axis=1)
-    
-    # KRİTİK NOKTA: CSS ile Sağa Yaslama
-    # Sadece text-align yetmez, justify-content ile de zorluyoruz.
-    if num_cols:
-        css_styles = (
-            "text-align: right !important; "
-            "justify-content: flex-end !important; "
-            "display: flex !important; "
-            "width: 100% !important;"
-        )
-        # map kullanarak her hücreye bu CSS'i uyguluyoruz
-        styler = styler.map(lambda x: css_styles, subset=num_cols)
-    
     return styler
 
 # --- DRIVE BAĞLANTISI ---
@@ -199,7 +158,7 @@ def main():
     service = get_drive_service()
     if not service: return
 
-    # Sidebar (Logoyu burada tuttuk, ana ekrandan kaldırdık)
+    # Sidebar
     with st.sidebar:
         st.image(LOGO_URL, width=50)
         st.write("---")
@@ -207,9 +166,7 @@ def main():
             st.cache_data.clear()
             st.rerun()
 
-    # --- HEADER GÜNCELLEMESİ ---
-    # Logo sütunu (col1) ve resim kaldırıldı. 
-    # Yazı doğrudan div içine alınıp padding sıfırlandı.
+    # --- HEADER ---
     st.markdown("""
         <div style="padding-top: 0px; padding-bottom: 10px;">
             <h1 style='margin: 0; padding: 0; font-size: 2.0rem; line-height: 1.2;'>ArtikaPro Bulut</h1>
@@ -237,13 +194,28 @@ def main():
     tab_malzeme, tab_projeler = st.tabs(["🧱 Malzeme Kütüphanesi", "📋 Proje Teklifleri"])
 
     # ----------------------------------------
+    # YARDIMCI: SÜTUN AYARLARINI OLUŞTUR
+    # ----------------------------------------
+    def create_column_config(df):
+        config = {}
+        keywords = ["fiyat", "tutar", "toplam", "meblağ", "b.f", "iskonto", "kdv", "hakediş"]
+        
+        for col in df.columns:
+            # Eğer sütun sayısal ise veya isminde para ifadesi varsa
+            if any(k in str(col).lower() for k in keywords) or pd.api.types.is_numeric_dtype(df[col]):
+                config[col] = st.column_config.NumberColumn(
+                    col,
+                    format="%.2f",  # 1234.56 formatı (Sağa yaslı ve temiz)
+                )
+            else:
+                config[col] = st.column_config.TextColumn(col)
+        return config
+
+    # ----------------------------------------
     # SEKME 1: MALZEME
     # ----------------------------------------
     with tab_malzeme:
         if malzeme_dosyasi:
-            # GÜNCELLEME: Dosya adı gösterilen st.info satırı kaldırıldı.
-            
-            # Veriyi çek
             df = load_excel_as_df(service, malzeme_dosyasi['id'])
             
             if df is not None:
@@ -258,6 +230,7 @@ def main():
                 view = st.radio("Görünüm:", ["Kart Görünümü", "Liste Görünümü"], horizontal=True, label_visibility="collapsed")
 
                 if view == "Kart Görünümü":
+                    # ... (Kart görünümü kodu aynı kalacak, buraya dokunmuyoruz) ...
                     if df.empty:
                         st.warning("Sonuç yok.")
                     else:
@@ -268,74 +241,40 @@ def main():
                                 kod = clean_text(row.get('Kod'))
                                 birim = clean_text(row.get('Birim'))
                                 aciklama = clean_text(row.get('Açıklama'))
-                                
                                 f_malzeme = row.get('Malzeme Birim Fiyat', 0)
                                 f_iscilik = row.get('İşçilik Birim Fiyat', 0)
                                 f_toplam = row.get('Toplam Birim Fiyat', 0)
                                 para_birimi = clean_text(row.get('Para Birimi')) or "TL"
-
                                 is_header = False
-                                try:
-                                    tutar_val = float(f_toplam)
-                                except:
-                                    tutar_val = 0
-                                
-                                if tutar_val == 0 and birim == "":
-                                    is_header = True
+                                try: tutar_val = float(f_toplam)
+                                except: tutar_val = 0
+                                if tutar_val == 0 and birim == "": is_header = True
                                 
                                 if is_header:
-                                    if ad: 
-                                        st.markdown(f'<div class="header-card">{ad}</div>', unsafe_allow_html=True)
+                                    if ad: st.markdown(f'<div class="header-card">{ad}</div>', unsafe_allow_html=True)
                                 else:
                                     birim_str = f"/ {birim}" if birim else ""
                                     kod_html = f'<div class="card-code">#{kod}</div>' if kod else ""
-                                    
                                     str_malz = format_para_str(f_malzeme)
                                     str_isc = format_para_str(f_iscilik)
                                     str_top = format_para_str(f_toplam)
-
-                                    html_content = f"""
-                                    <div class="material-card">
-                                        {kod_html}
-                                        <div class="card-title">{ad}</div>
-                                        <div class="card-details">
-                                            <div class="detail-item">🧱 Malz: <span class="detail-val">{str_malz} {para_birimi}</span></div>
-                                            <div class="detail-item">👷 İşç: <span class="detail-val">{str_isc} {para_birimi}</span></div>
-                                        </div>
-                                        <div class="card-price">
-                                            {str_top} {para_birimi}
-                                            <span class="card-unit">{birim_str}</span>
-                                        </div>
-                                        <div class="card-desc">{aciklama}</div>
-                                    </div>
-                                    """
+                                    html_content = f"""<div class="material-card">{kod_html}<div class="card-title">{ad}</div><div class="card-details"><div class="detail-item">🧱 Malz: <span class="detail-val">{str_malz} {para_birimi}</span></div><div class="detail-item">👷 İşç: <span class="detail-val">{str_isc} {para_birimi}</span></div></div><div class="card-price">{str_top} {para_birimi}<span class="card-unit">{birim_str}</span></div><div class="card-desc">{aciklama}</div></div>"""
                                     st.markdown(html_content, unsafe_allow_html=True)
                 else:
-                    rename_map = {
-                        "Malzeme Birim Fiyat": "Malzeme B.F",
-                        "İşçilik Birim Fiyat": "İşçilik B.F",
-                        "Toplam Birim Fiyat": "Toplam B.F",
-                        "Para Birimi": "P.B",
-                        "Tanım": "Tanım", 
-                        "Poz No": "Poz No",
-                        "Birim": "Birim"
-                    }
+                    # LİSTE GÖRÜNÜMÜ GÜNCELLEMESİ
+                    rename_map = {"Malzeme Birim Fiyat": "Malzeme B.F", "İşçilik Birim Fiyat": "İşçilik B.F", "Toplam Birim Fiyat": "Toplam B.F", "Para Birimi": "P.B", "Tanım": "Tanım", "Poz No": "Poz No", "Birim": "Birim"}
                     df_display = df.rename(columns=rename_map)
                     
-                    col_config = {
-                        "Poz No": st.column_config.TextColumn("Poz No", width="small"),
-                        "Tanım": st.column_config.TextColumn("Tanım", width="large"), 
-                        "Birim": st.column_config.TextColumn("Birim", width="small"),
-                        "Malzeme B.F": st.column_config.NumberColumn("Malzeme B.F", format="%.2f", width="small"),
-                        "İşçilik B.F": st.column_config.NumberColumn("İşçilik B.F", format="%.2f", width="small"),
-                        "Toplam B.F": st.column_config.NumberColumn("Toplam B.F", format="%.2f", width="small"),
-                        "P.B": st.column_config.TextColumn("P.B", width="small")
-                    }
-
+                    # Style fonksiyonunu çağırıyoruz
+                    styled_df = apply_table_style(df_display)
+                    
+                    # Column Config ile gösterim (Sağa Yaslama + Format)
+                    cfg = create_column_config(df_display)
+                    
                     st.dataframe(
-                        df_display, 
-                        column_config=col_config,
-                        use_container_width=False, 
+                        styled_df, 
+                        column_config=cfg,
+                        use_container_width=True, 
                         hide_index=True
                     )
         else:
@@ -354,15 +293,18 @@ def main():
             if secilen_dosya:
                 with st.spinner("Proje detayları yükleniyor..."):
                     file_bytes = download_excel_bytes(service, secilen_dosya['id'])
-                    
                     if file_bytes:
                         xls_proj = pd.ExcelFile(io.BytesIO(file_bytes))
-                        
                         sheet_names = xls_proj.sheet_names
+                        
                         if "İcmal Tablosu" in sheet_names:
                             st.subheader("📊 İcmal Özeti")
                             df_icmal = pd.read_excel(xls_proj, "İcmal Tablosu")
-                            st.dataframe(apply_table_style(df_icmal), use_container_width=True)
+                            
+                            # GÜNCELLEME BURADA:
+                            styled_icmal = apply_table_style(df_icmal)
+                            cfg_icmal = create_column_config(df_icmal)
+                            st.dataframe(styled_icmal, column_config=cfg_icmal, use_container_width=True)
                             st.divider()
                         
                         detay_sayfalari = [s for s in sheet_names if s != "İcmal Tablosu"]
@@ -370,7 +312,11 @@ def main():
                             sayfa = st.pills("Detay Sayfası:", detay_sayfalari, default=detay_sayfalari[0], key="pills_detay")
                             if sayfa:
                                 df_detay = pd.read_excel(xls_proj, sayfa)
-                                st.dataframe(apply_table_style(df_detay), use_container_width=True)
+                                
+                                # GÜNCELLEME BURADA:
+                                styled_detay = apply_table_style(df_detay)
+                                cfg_detay = create_column_config(df_detay)
+                                st.dataframe(styled_detay, column_config=cfg_detay, use_container_width=True)
         else:
             st.info("Proje teklifi yok.")
 
