@@ -67,13 +67,12 @@ def format_para_str(tutar):
         return "0,00"
 
 def apply_table_style(df):
-    # Veri kopyasını al
+    # Veri kopyasını al ve tamamen boş satırları sil
     df = df.copy()
-    # Tamamen boş satırları sil
     df = df.dropna(how='all')
     
     # -------------------------------------------------------
-    # 1. SAYISAL SÜTUNLARI BELİRLE VE ZORLA TİP DÖNÜŞTÜR
+    # 1. SAYISAL SÜTUNLARI TESPİT ET
     # -------------------------------------------------------
     keywords = ["fiyat", "tutar", "toplam", "meblağ", "b.f", "iskonto", "kdv", "hakediş"]
     num_cols = []
@@ -82,40 +81,51 @@ def apply_table_style(df):
         # İsminde anahtar kelime varsa veya zaten sayısal ise
         if any(k in str(col).lower() for k in keywords) or pd.api.types.is_numeric_dtype(df[col]):
             num_cols.append(col)
-            # Kritik Hamle: Hepsini zorla float yap. Hata verenleri (None, string vb) NaN'a çevir.
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-
+            
     num_cols = list(set(num_cols))
 
     # -------------------------------------------------------
-    # 2. METİN SÜTUNLARINI TEMİZLE
+    # 2. KRİTİK HAMLE: SAYILARI FORMATLI METNE ÇEVİR (String Conversion)
+    # -------------------------------------------------------
+    # Bu işlem, sayıları "1.234,56" şeklinde yazıya çevirir. 
+    # Boş olanları ise "None" değil, tamamen boş string "" yapar.
+    
+    for col in num_cols:
+        # Önce sayısal olmayanları NaN yap
+        s_numeric = pd.to_numeric(df[col], errors='coerce')
+        
+        # Her bir hücre için özel dönüşüm fonksiyonu
+        def convert_to_formatted_string(val):
+            if pd.isna(val):
+                return ""  # NaN ise KESİNLİKLE boş string döndür
+            try:
+                # TR Para formatı
+                return "{:,.2f}".format(val).replace(",", "X").replace(".", ",").replace("X", ".")
+            except:
+                return ""
+        
+        # Sütunu tamamen object (string) tipine çeviriyoruz
+        df[col] = s_numeric.apply(convert_to_formatted_string)
+
+    # -------------------------------------------------------
+    # 3. DİĞER METİN SÜTUNLARINI TEMİZLE
     # -------------------------------------------------------
     other_cols = [c for c in df.columns if c not in num_cols]
     for col in other_cols:
-        df[col] = df[col].fillna("") # None -> ""
+        df[col] = df[col].fillna("") 
         df[col] = df[col].astype(str)
-        # Regex ile inatçı "None", "nan" yazılarını temizle
+        # İnatçı "None", "nan", "null" yazılarını temizle
         df[col] = df[col].replace(r'(?i)^(nan|none|null)$', "", regex=True)
         df[col] = df[col].str.strip()
 
     # -------------------------------------------------------
-    # 3. GÖRÜNÜM AYARLARI (STYLER)
+    # 4. GÖRÜNÜM AYARLARI (STYLER)
     # -------------------------------------------------------
     
-    # Formatlayıcı Fonksiyon
-    def tr_fmt(x):
-        # Eğer değer NaN (boş) ise
-        if pd.isna(x) or x is None:
-            return ""  # Kesinlikle boş string döndür
-        try:
-            # Değer varsa formatla
-            return "{:,.2f}".format(x).replace(",", "X").replace(".", ",").replace("X", ".")
-        except:
-            return ""
-
     # Başlık Satırı Renklendirme
     def highlight_headers(row):
         val = row.get('Birim', "")
+        # Birim sütunu boşsa bu satır bir başlıktır
         if str(val).strip() == "":
             return ['background-color: #dbeafe; color: #1e3a8a; font-weight: bold'] * len(row)
         return [''] * len(row)
@@ -123,10 +133,8 @@ def apply_table_style(df):
     # Stili oluştur
     styler = df.style.apply(highlight_headers, axis=1)
     
+    # Artık sütunlar metin olduğu için CSS ile sağa yaslamamız şart
     if num_cols:
-        # na_rep="" parametresi NaN değerleri boş gösterir
-        styler = styler.format(tr_fmt, subset=num_cols, na_rep="")
-        # Sağa yaslama
         styler = styler.set_properties(subset=num_cols, **{'text-align': 'right'})
     
     return styler
