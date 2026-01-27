@@ -66,53 +66,56 @@ def format_para_str(tutar):
         return "0,00"
 
 def apply_table_style(df):
-    # Tamamen boş satırları at
+    # Orijinal veriyi bozmamak için kopyasını alalım
+    df = df.copy()
     df = df.dropna(how='all')
     
-    # Sütun tiplerini ayır
+    # 1. Hangi sütunların sayı olduğunu tespit et (Formatlamak için)
     num_cols = df.select_dtypes(include=['float64', 'int64']).columns
     other_cols = df.select_dtypes(exclude=['float64', 'int64']).columns
     
-    # 1. Sayı Formatlama (TR Formatı + Boşluk Temizliği)
-    def tr_fmt_func(x):
-        if pd.isna(x): return ""
-        return "{:,.2f}".format(x).replace(",", "X").replace(".", ",").replace("X", ".")
+    # 2. Sayısal Sütunları Temizle ve Formatla
+    for col in num_cols:
+        def fmt(x):
+            if pd.isna(x) or str(x).strip() == "": return ""
+            try:
+                # Sayıyı TR formatına çevir (1.234,56 şeklinde)
+                return "{:,.2f}".format(float(x)).replace(",", "X").replace(".", ",").replace("X", ".")
+            except:
+                return str(x)
+        
+        # Kolonu "Object" tipine çevirip format fonksiyonunu uygula
+        df[col] = df[col].astype(object).apply(fmt)
+        
+    # 3. Metin (Text) Sütunlarındaki "None"ları Temizle
+    for col in other_cols:
+        # Önce NaN değerlerini boş yap
+        df[col] = df[col].fillna("")
+        # Kalan "nan", "None" metinleri varsa sil
+        df[col] = df[col].astype(str).replace({"nan": "", "None": "", "NaN": ""}, regex=True)
+        # Sadece boş stringe çevir
+        df[col] = df[col].apply(lambda x: "" if x.strip().lower() in ["nan", "none"] else x)
 
-    # 2. Metin Formatlama (None/NaN Temizliği)
-    def str_fmt_func(x):
-        if pd.isna(x) or str(x).lower() == "nan" or str(x).lower() == "none": 
-            return ""
-        return str(x)
-
-    # 3. Başlık Satırlarını Boyama Fonksiyonu
+    # 4. Başlık Satırlarını Tespit Et (Birim hücresi boşsa başlıktır)
     def highlight_headers(row):
         is_header = False
-        # 'Birim' sütunu boşsa başlık satırı kabul et
-        if 'Birim' in row.index:
-            val = row['Birim']
-            if pd.isna(val) or str(val).strip() == "":
-                is_header = True
-        
+        val = row.get('Birim', "")
+        # Temizlediğimiz için artık NaN değil, "" (boşluk) kontrolü yapıyoruz
+        if str(val).strip() == "":
+            is_header = True
+            
         if is_header:
+            # Açık Mavi Arka Plan, Koyu Mavi Yazı
             return ['background-color: #dbeafe; color: #1e3a8a; font-weight: bold'] * len(row)
         else:
             return [''] * len(row)
 
-    # 4. Format Sözlüğünü Hazırla (Tüm sütunları kapsayacak şekilde)
-    format_dict = {}
-    
-    # Sayısal sütunlara TR formatı
-    for col in num_cols:
-        format_dict[col] = tr_fmt_func
-        
-    # Diğer sütunlara (Metin) None temizliği
-    for col in other_cols:
-        format_dict[col] = str_fmt_func
-
     # 5. Stili Uygula
-    styler = df.style.format(format_dict)
-    styler = styler.set_properties(subset=num_cols, **{'text-align': 'right'})
-    styler = styler.apply(highlight_headers, axis=1)
+    styler = df.style.apply(highlight_headers, axis=1)
+    
+    # Sayısal sütunları (artık metin oldukları için) sağa yasla
+    if len(num_cols) > 0:
+        styler = styler.set_properties(subset=num_cols, **{'text-align': 'right'})
     
     return styler
 
