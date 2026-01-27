@@ -65,24 +65,27 @@ def format_para_str(tutar):
     except:
         return "0,00"
 
-# --- TABLE STYLER (Kesin Çözüm) ---
+# --- TABLE STYLER (Çözüm Fonksiyonu) ---
 def apply_table_style(df):
     df = df.copy()
     df = df.dropna(how='all')
     
-    # 1. Sayısal Sütunları Belirle ve Float'a Çevir (String yapma!)
+    # 1. Sayısal Sütunları Belirle
     keywords = ["fiyat", "tutar", "toplam", "meblağ", "b.f", "iskonto", "kdv", "hakediş"]
     num_cols = []
     
     for col in df.columns:
         if any(k in str(col).lower() for k in keywords) or pd.api.types.is_numeric_dtype(df[col]):
             num_cols.append(col)
-            # Sayıya çevir (Hata verenleri NaN yap)
+            # Veriyi sayıya çevir (Float)
             df[col] = pd.to_numeric(df[col], errors='coerce')
+            # KRİTİK ADIM: Boşlukları (NaN) 0 ile doldur. 
+            # Böylece Streamlit 'None' yazamaz, çünkü değer 0 olur.
+            df[col] = df[col].fillna(0)
     
     num_cols = list(set(num_cols))
 
-    # 2. Metin Sütunlarını Temizle ("None" yazısını sil)
+    # 2. Metin Sütunlarını Temizle (None, nan yazılarını sil)
     other_cols = [c for c in df.columns if c not in num_cols]
     for col in other_cols:
         df[col] = df[col].fillna("")
@@ -90,33 +93,30 @@ def apply_table_style(df):
         df[col] = df[col].replace(r'(?i)^(nan|none|null)$', "", regex=True)
         df[col] = df[col].str.strip()
 
-    # 3. FORMATLAYICI FONKSİYON (Maskeleme)
-    # Bu fonksiyon veriyi değiştirmez, sadece görüntüyü değiştirir.
+    # 3. Formatlayıcı (Görünmez 0 ve Binlik Ayıracı)
     def tr_formatter(x):
-        # Değer boşsa (NaN) -> Boş String Döner
-        if pd.isna(x) or x is None:
+        # Eğer değer 0 ise (bizim doldurduğumuz boşluklar), BOŞ GÖSTER
+        if x == 0:
             return ""
         try:
-            # Sayı varsa -> 1.234,56 formatına çevirir
+            # Diğer sayıları binlik ayraçlı formatla: 1.234,56
             return "{:,.2f}".format(x).replace(",", "X").replace(".", ",").replace("X", ".")
         except:
             return ""
 
-    # 4. Stil Fonksiyonu (Renkler)
+    # 4. Başlık Satırı Renklendirme
     def highlight_headers(row):
         val = row.get('Birim', "")
         if str(val).strip() == "":
             return ['background-color: #dbeafe; color: #1e3a8a; font-weight: bold'] * len(row)
         return [''] * len(row)
 
-    # Styler Başlat
     styler = df.style.apply(highlight_headers, axis=1)
 
-    # 5. Formatı ve Hizalamayı Uygula
+    # 5. Format ve Sağa Yaslama
     if num_cols:
-        # Pandas Styler'ın kendi format özelliğini kullanıyoruz (En temiz yöntem)
+        # Veri "Sayı" olduğu için sağa yaslanmaya meyillidir, CSS ile garantiye alıyoruz
         styler = styler.format(tr_formatter, subset=num_cols)
-        # Hizalamayı Styler üzerinden yapıyoruz
         styler = styler.set_properties(subset=num_cols, **{'text-align': 'right'})
 
     return styler
@@ -264,7 +264,6 @@ def main():
                     df_display = df.rename(columns=rename_map)
                     
                     styled_df = apply_table_style(df_display)
-                    # COLUMN_CONFIG KALDIRILDI - STYLER'IN FORMATI KULLANILACAK
                     st.dataframe(styled_df, use_container_width=True, hide_index=True)
         else:
             st.info("Malzeme listesi yok.")
