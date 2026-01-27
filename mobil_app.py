@@ -296,7 +296,17 @@ def main():
                                     """
                                     st.markdown(html_content, unsafe_allow_html=True)
                 else:
-                    st.dataframe(df, use_container_width=True, hide_index=True)
+                    # Sütun isimlerini kısalt (Sadece görünüm için)
+                    rename_map = {
+                        "Malzeme Birim Fiyat": "Malzeme B.F",
+                        "İşçilik Birim Fiyat": "İşçilik B.F",
+                        "Toplam Birim Fiyat": "Toplam B.F",
+                        "Para Birimi": "P.B"
+                    }
+                    # Orijinal df'yi bozmadan kopyası üzerinde işlem yapıyoruz
+                    df_display = df.rename(columns=rename_map)
+                    
+                    st.dataframe(df_display, use_container_width=True, hide_index=True)
         else:
             st.info("Malzeme listesi yok.")
 
