@@ -67,41 +67,45 @@ def format_para_str(tutar):
         return "0,00"
 
 def apply_table_style(df):
-    # Orijinal veriyi bozmamak için kopya al
+    # Orijinal veriyi korumak için kopya alıyoruz
     df = df.copy()
     df = df.dropna(how='all')
     
-    # 1. Sayısal Sütunları Belirle (İsimden ve Tipten)
+    # 1. Sayısal Sütunları Belirle (İsimden ve Veri Tipinden)
+    # Bu sütunları kesinlikle sayısal formatta tutacağız ki SAĞA yaslansın.
     keywords = ["fiyat", "tutar", "toplam", "meblağ", "b.f", "iskonto", "kdv", "hakediş"]
     num_cols = []
     
     for col in df.columns:
-        # İsminde anahtar kelime geçiyorsa sayıya zorla
+        # İsminde para ile ilgili ifade geçiyorsa
         if any(k in str(col).lower() for k in keywords):
             df[col] = pd.to_numeric(df[col], errors='coerce')
             num_cols.append(col)
-        # Zaten sayı tipindeyse listeye ekle
+        # İsmi uymasa bile veri tipi zaten sayıysa
         elif pd.api.types.is_numeric_dtype(df[col]):
             num_cols.append(col)
-            
-    # Mükerrerleri önle
+
+    # Mükerrerleri temizle
     num_cols = list(set(num_cols))
 
-    # 2. Metin Sütunlarını Temizle (None, nan, NaN yazılarını sil)
+    # 2. Metin Sütunlarını Temizle ("None", "nan" yazılarını yok et)
+    # Sayısal olmayan tüm sütunları bul
     other_cols = [c for c in df.columns if c not in num_cols]
+    
     for col in other_cols:
-        # Önce NaN'ları boşluk yap
+        # Önce boşlukları doldur
         df[col] = df[col].fillna("")
-        # Stringe çevir
+        # Hepsini metne çevir
         df[col] = df[col].astype(str)
-        # "nan", "None" gibi metinleri regex ile sil (Büyük/küçük harf duyarlı olabilir, hepsini kapsayalım)
-        df[col] = df[col].replace([r'^nan$', r'^None$', r'^NaN$', r'^null$'], "", regex=True)
-        # Boşlukları temizle
+        # "nan", "None", "NaN", "null" gibi ifadeleri, BÜYÜK/KÜÇÜK harf fark etmeksizin sil
+        # Regex açıklaması: (?i) büyük/küçük harf duyarsız, ^ ve $ tam eşleşme (sadece "None" yazıyorsa siler, "Nonevarmı"yı silmez)
+        df[col] = df[col].replace(r'(?i)^(nan|none|null)$', "", regex=True)
+        # Sağdan soldan boşlukları al
         df[col] = df[col].str.strip()
 
-    # 3. Sayı Formatlayıcı (Boş değer kontrolüyle)
+    # 3. Formatlayıcı Fonksiyon (Sayılar için)
     def tr_fmt(x):
-        # Eğer değer NaN, None veya boş ise BOŞ STRING döndür
+        # Eğer değer boşsa, None ise veya tanımsızsa BOŞ STRING döndür
         if pd.isna(x) or x is None or str(x).strip() == "":
             return ""
         try:
@@ -110,11 +114,11 @@ def apply_table_style(df):
         except:
             return ""
 
-    # 4. Başlık (Header) Satırı Mantığı
+    # 4. Başlık (Header) Satırı Renklendirme
     def highlight_headers(row):
         val = row.get('Birim', "")
-        # Birim sütunu boşsa bu bir başlıktır
-        if pd.isna(val) or str(val).strip() == "":
+        # Birim sütunu boşsa bu satır bir başlıktır
+        if str(val).strip() == "":
             return ['background-color: #dbeafe; color: #1e3a8a; font-weight: bold'] * len(row)
         return [''] * len(row)
 
@@ -122,9 +126,11 @@ def apply_table_style(df):
     styler = df.style.apply(highlight_headers, axis=1)
     
     if num_cols:
-        # na_rep="" parametresini ekleyerek NaN değerlerin boş görünmesini garantiye alıyoruz
+        # na_rep="" parametresini ekleyerek, sayısal sütunlardaki boş (NaN) değerlerin 
+        # "None" yerine boşluk ("") olarak görünmesini GARANTİ ediyoruz.
         styler = styler.format(tr_fmt, subset=num_cols, na_rep="")
-        # Sayısal sütunları SAĞA yasla
+        
+        # Sayısal sütunları zorla SAĞA yasla (Hem CSS ile hem veri tipiyle)
         styler = styler.set_properties(subset=num_cols, **{'text-align': 'right'})
     
     return styler
