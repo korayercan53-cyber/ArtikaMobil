@@ -66,38 +66,52 @@ def format_para_str(tutar):
         return "0,00"
 
 def apply_table_style(df):
+    # Tamamen boş satırları at
     df = df.dropna(how='all')
-    num_cols = df.select_dtypes(include=['float64', 'int64']).columns
     
-    # 1. Sayı Formatlama (TR Formatı)
+    # Sütun tiplerini ayır
+    num_cols = df.select_dtypes(include=['float64', 'int64']).columns
+    other_cols = df.select_dtypes(exclude=['float64', 'int64']).columns
+    
+    # 1. Sayı Formatlama (TR Formatı + Boşluk Temizliği)
     def tr_fmt_func(x):
         if pd.isna(x): return ""
         return "{:,.2f}".format(x).replace(",", "X").replace(".", ",").replace("X", ".")
 
-    # 2. Başlık Satırlarını Boyama Fonksiyonu (YENİ EKLENDİ)
+    # 2. Metin Formatlama (None/NaN Temizliği)
+    def str_fmt_func(x):
+        if pd.isna(x) or str(x).lower() == "nan" or str(x).lower() == "none": 
+            return ""
+        return str(x)
+
+    # 3. Başlık Satırlarını Boyama Fonksiyonu
     def highlight_headers(row):
-        # Başlık tespiti: Genellikle başlık satırlarında 'Birim' hücresi boş olur.
-        # Veya 'Miktar' 0/boş olabilir. En güvenlisi 'Birim' kontrolüdür.
         is_header = False
-        
-        # 'Birim' sütunu var mı kontrol et
+        # 'Birim' sütunu boşsa başlık satırı kabul et
         if 'Birim' in row.index:
             val = row['Birim']
-            # Eğer Birim boşsa (NaN veya boş string) -> Bu bir başlıktır
             if pd.isna(val) or str(val).strip() == "":
                 is_header = True
         
-        # Eğer başlıksa Açık Mavi (#dbeafe) yap, yazı koyu olsun
         if is_header:
             return ['background-color: #dbeafe; color: #1e3a8a; font-weight: bold'] * len(row)
         else:
             return [''] * len(row)
 
-    # 3. Stili Uygula
-    styler = df.style.format({col: tr_fmt_func for col in num_cols})
-    styler = styler.set_properties(subset=num_cols, **{'text-align': 'right'})
+    # 4. Format Sözlüğünü Hazırla (Tüm sütunları kapsayacak şekilde)
+    format_dict = {}
     
-    # Boyama fonksiyonunu satır bazlı (axis=1) uygula
+    # Sayısal sütunlara TR formatı
+    for col in num_cols:
+        format_dict[col] = tr_fmt_func
+        
+    # Diğer sütunlara (Metin) None temizliği
+    for col in other_cols:
+        format_dict[col] = str_fmt_func
+
+    # 5. Stili Uygula
+    styler = df.style.format(format_dict)
+    styler = styler.set_properties(subset=num_cols, **{'text-align': 'right'})
     styler = styler.apply(highlight_headers, axis=1)
     
     return styler
