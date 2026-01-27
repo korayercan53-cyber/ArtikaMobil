@@ -19,7 +19,7 @@ st.set_page_config(page_title="ArtikaPro Bulut", page_icon="🏗️", layout="wi
 # --- CSS TASARIMI ---
 st.markdown("""
 <style>
-    /* Üst boşluğu daha da azalttık */
+    /* Üst boşluğu azalttık */
     .block-container { padding-top: 1rem !important; margin-top: 0rem !important; }
     header {visibility: hidden;} 
     .stTabs [data-baseweb="tab-list"] { gap: 8px; }
@@ -67,38 +67,64 @@ def format_para_str(tutar):
         return "0,00"
 
 def apply_table_style(df):
+    # Orijinal veriyi bozmamak için kopyasını alalım
     df = df.copy()
     df = df.dropna(how='all')
+    
+    # --- YENİ EKLENEN KISIM: İsimden Fiyat/Tutar tespiti ---
+    # Sadece veri tipine güvenmeyelim, isminde para ile ilgili ifade geçenleri sayıya zorlayalım.
+    keywords = ["fiyat", "tutar", "toplam", "meblağ", "b.f", "iskonto", "kdv", "hakediş"]
+    for col in df.columns:
+        if any(k in str(col).lower() for k in keywords):
+            try:
+                # Sayıya çevirmeyi dene, hata verirse (metinse) NaN yapma, olduğu gibi kalsın
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+            except:
+                pass
+    # -------------------------------------------------------
+    
+    # 1. Hangi sütunların sayı olduğunu tespit et (Formatlamak için)
     num_cols = df.select_dtypes(include=['float64', 'int64']).columns
     other_cols = df.select_dtypes(exclude=['float64', 'int64']).columns
     
+    # 2. Sayısal Sütunları Temizle ve Formatla
     for col in num_cols:
         def fmt(x):
             if pd.isna(x) or str(x).strip() == "": return ""
             try:
+                # Sayıyı TR formatına çevir (1.234,56 şeklinde)
                 return "{:,.2f}".format(float(x)).replace(",", "X").replace(".", ",").replace("X", ".")
             except:
                 return str(x)
+        
+        # Kolonu "Object" tipine çevirip format fonksiyonunu uygula
         df[col] = df[col].astype(object).apply(fmt)
         
+    # 3. Metin (Text) Sütunlarındaki "None"ları Temizle
     for col in other_cols:
         df[col] = df[col].fillna("")
         df[col] = df[col].astype(str).replace({"nan": "", "None": "", "NaN": ""}, regex=True)
         df[col] = df[col].apply(lambda x: "" if x.strip().lower() in ["nan", "none"] else x)
 
+    # 4. Başlık Satırlarını Tespit Et
     def highlight_headers(row):
         is_header = False
         val = row.get('Birim', "")
         if str(val).strip() == "":
-            is_header = True   
+            is_header = True
+            
         if is_header:
             return ['background-color: #dbeafe; color: #1e3a8a; font-weight: bold'] * len(row)
         else:
             return [''] * len(row)
 
+    # 5. Stili Uygula
     styler = df.style.apply(highlight_headers, axis=1)
+    
+    # Sayısal sütunları (artık metin oldukları için) sağa yasla
     if len(num_cols) > 0:
         styler = styler.set_properties(subset=num_cols, **{'text-align': 'right'})
+    
     return styler
 
 # --- DRIVE BAĞLANTISI ---
@@ -159,7 +185,7 @@ def main():
     service = get_drive_service()
     if not service: return
 
-    # Sidebar (Logoyu burada tuttuk, ana ekrandan kaldırdık)
+    # Sidebar
     with st.sidebar:
         st.image(LOGO_URL, width=50)
         st.write("---")
@@ -167,9 +193,7 @@ def main():
             st.cache_data.clear()
             st.rerun()
 
-    # --- HEADER GÜNCELLEMESİ ---
-    # Logo sütunu (col1) ve resim kaldırıldı. 
-    # Yazı doğrudan div içine alınıp padding sıfırlandı.
+    # --- HEADER ---
     st.markdown("""
         <div style="padding-top: 0px; padding-bottom: 10px;">
             <h1 style='margin: 0; padding: 0; font-size: 2.0rem; line-height: 1.2;'>ArtikaPro Bulut</h1>
@@ -201,9 +225,6 @@ def main():
     # ----------------------------------------
     with tab_malzeme:
         if malzeme_dosyasi:
-            # GÜNCELLEME: Dosya adı gösterilen st.info satırı kaldırıldı.
-            
-            # Veriyi çek
             df = load_excel_as_df(service, malzeme_dosyasi['id'])
             
             if df is not None:
