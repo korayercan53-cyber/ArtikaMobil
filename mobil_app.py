@@ -67,38 +67,59 @@ def format_para_str(tutar):
         return "0,00"
 
 def apply_table_style(df):
+    # 1. Veri kopyası ve boş satır temizliği
     df = df.copy()
     df = df.dropna(how='all')
-    num_cols = df.select_dtypes(include=['float64', 'int64']).columns
-    other_cols = df.select_dtypes(exclude=['float64', 'int64']).columns
     
-    for col in num_cols:
-        def fmt(x):
-            if pd.isna(x) or str(x).strip() == "": return ""
-            try:
-                return "{:,.2f}".format(float(x)).replace(",", "X").replace(".", ",").replace("X", ".")
-            except:
-                return str(x)
-        df[col] = df[col].astype(object).apply(fmt)
-        
+    # 2. Hangi sütunların sayısal olduğunu belirle (İsimden ve Tipten)
+    # Bu kelimeleri içeren sütunları sayıya zorlayacağız
+    keywords = ["fiyat", "tutar", "toplam", "meblağ", "b.f", "iskonto", "kdv", "hakediş"]
+    num_cols = []
+    
+    for col in df.columns:
+        # İsminde anahtar kelime geçiyorsa (büyük/küçük harf duyarsız)
+        if any(k in str(col).lower() for k in keywords):
+            # Sayıya çevir, hata verenleri (metin, boşluk vb.) NaN yap
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+            num_cols.append(col)
+        # Zaten sayı formatındaysa listeye ekle
+        elif pd.api.types.is_numeric_dtype(df[col]):
+            num_cols.append(col)
+
+    # 3. Metin Sütunlarını Temizle (None, nan yazılarını kaldır)
+    other_cols = [c for c in df.columns if c not in num_cols]
     for col in other_cols:
         df[col] = df[col].fillna("")
         df[col] = df[col].astype(str).replace({"nan": "", "None": "", "NaN": ""}, regex=True)
-        df[col] = df[col].apply(lambda x: "" if x.strip().lower() in ["nan", "none"] else x)
 
+    # 4. Sayı Formatlayıcı (Görünüm Ayarı)
+    def tr_fmt(x):
+        # Eğer hücre boşsa veya tanımsızsa BOŞ STRING döndür (None yazmaz)
+        if pd.isna(x) or x is None or str(x).strip() == "":
+            return ""
+        try:
+            # 1.234,56 formatı
+            return "{:,.2f}".format(x).replace(",", "X").replace(".", ",").replace("X", ".")
+        except:
+            return ""
+
+    # 5. Başlık (Header) Satırı Mantığı
     def highlight_headers(row):
-        is_header = False
+        # Birim sütunu boşsa bu bir başlık satırıdır
         val = row.get('Birim', "")
-        if str(val).strip() == "":
-            is_header = True   
-        if is_header:
+        if pd.isna(val) or str(val).strip() == "":
             return ['background-color: #dbeafe; color: #1e3a8a; font-weight: bold'] * len(row)
-        else:
-            return [''] * len(row)
+        return [''] * len(row)
 
+    # 6. Stili Uygula
     styler = df.style.apply(highlight_headers, axis=1)
-    if len(num_cols) > 0:
+    
+    if num_cols:
+        # Format fonksiyonunu sadece sayısal sütunlara uygula
+        styler = styler.format(tr_fmt, subset=num_cols, na_rep="")
+        # Bu sütunları SAĞA yasla
         styler = styler.set_properties(subset=num_cols, **{'text-align': 'right'})
+    
     return styler
 
 # --- DRIVE BAĞLANTISI ---
