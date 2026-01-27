@@ -296,17 +296,38 @@ def main():
                                     """
                                     st.markdown(html_content, unsafe_allow_html=True)
                 else:
-                    # Sütun isimlerini kısalt (Sadece görünüm için)
+                    # Sütun isimlerini kısalt
                     rename_map = {
                         "Malzeme Birim Fiyat": "Malzeme B.F",
                         "İşçilik Birim Fiyat": "İşçilik B.F",
                         "Toplam Birim Fiyat": "Toplam B.F",
-                        "Para Birimi": "P.B"
+                        "Para Birimi": "P.B",
+                        "Tanım": "Tanım", 
+                        "Poz No": "Poz No",
+                        "Birim": "Birim"
                     }
-                    # Orijinal df'yi bozmadan kopyası üzerinde işlem yapıyoruz
                     df_display = df.rename(columns=rename_map)
                     
-                    st.dataframe(df_display, use_container_width=True, hide_index=True)
+                    # Sütun Konfigürasyonu (Genişlik Ayarı)
+                    # "width": "small" veya "medium" diyerek daraltmaya çalışıyoruz.
+                    col_config = {
+                        "Poz No": st.column_config.TextColumn("Poz No", width="small"),
+                        "Tanım": st.column_config.TextColumn("Tanım", width="large"), # Tanım geniş kalsın
+                        "Birim": st.column_config.TextColumn("Birim", width="small"),
+                        "Malzeme B.F": st.column_config.NumberColumn("Malzeme B.F", format="%.2f", width="small"),
+                        "İşçilik B.F": st.column_config.NumberColumn("İşçilik B.F", format="%.2f", width="small"),
+                        "Toplam B.F": st.column_config.NumberColumn("Toplam B.F", format="%.2f", width="medium"), # Toplam biraz daha belirgin
+                        "P.B": st.column_config.TextColumn("P.B", width="small")
+                    }
+
+                    # use_container_width=True -> Ekranın tamamını kapla (Bunu kapatırsan daha sıkışık olur)
+                    # use_container_width=False yaparsan sütunlar sadece içerik kadar yer kaplar (AutoFit benzeri)
+                    st.dataframe(
+                        df_display, 
+                        column_config=col_config,
+                        use_container_width=False,  # <-- BURAYI FALSE YAPTIK (ÖNEMLİ)
+                        hide_index=True
+                    )
         else:
             st.info("Malzeme listesi yok.")
 
