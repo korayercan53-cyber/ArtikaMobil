@@ -67,30 +67,57 @@ def format_para_str(tutar):
         return "0,00"
 
 def apply_table_style(df):
-    # Veri kopyasını al ve tamamen boş satırları sil
+    # Veri kopyasını al
     df = df.copy()
     df = df.dropna(how='all')
     
-    # 1. SAYISAL SÜTUNLARI BELİRLE VE FLOAT YAP
+    # -------------------------------------------------------
+    # 1. SAYISAL SÜTUNLARI BELİRLE
+    # -------------------------------------------------------
     keywords = ["fiyat", "tutar", "toplam", "meblağ", "b.f", "iskonto", "kdv", "hakediş"]
     num_cols = []
     
     for col in df.columns:
         if any(k in str(col).lower() for k in keywords) or pd.api.types.is_numeric_dtype(df[col]):
             num_cols.append(col)
-            # Sayıya çevir (Hata verenler NaN olur)
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-    
-    # 2. METİN SÜTUNLARINI TEMİZLE
+            
+    num_cols = list(set(num_cols))
+
+    # -------------------------------------------------------
+    # 2. ÖZEL FORMATLAMA (None -> Boşluk, Sayı -> 1.234,56)
+    # -------------------------------------------------------
+    for col in num_cols:
+        # Önce sayısal yap
+        s_numeric = pd.to_numeric(df[col], errors='coerce')
+        
+        def convert_to_formatted_string(val):
+            # Değer boşsa, None ise veya NaN ise -> BOŞLUK
+            if pd.isna(val) or val is None or str(val).strip() == "":
+                return ""
+            try:
+                # TR Para Formatı: 1.234,56
+                return "{:,.2f}".format(val).replace(",", "X").replace(".", ",").replace("X", ".")
+            except:
+                return ""
+        
+        # Sütunu metne (string) çevir
+        df[col] = s_numeric.apply(convert_to_formatted_string)
+
+    # -------------------------------------------------------
+    # 3. DİĞER METİN SÜTUNLARINI TEMİZLE
+    # -------------------------------------------------------
     other_cols = [c for c in df.columns if c not in num_cols]
     for col in other_cols:
         df[col] = df[col].fillna("")
         df[col] = df[col].astype(str)
-        # "nan", "None" yazılarını sil
+        # "nan", "None" gibi metinleri sil
         df[col] = df[col].replace(r'(?i)^(nan|none|null)$', "", regex=True)
         df[col] = df[col].str.strip()
 
-    # 3. BAŞLIK RENKLENDİRME (Styler sadece renk için kalsın)
+    # -------------------------------------------------------
+    # 4. GÖRÜNÜM AYARLARI (STYLER)
+    # -------------------------------------------------------
+    
     def highlight_headers(row):
         val = row.get('Birim', "")
         if str(val).strip() == "":
@@ -98,21 +125,19 @@ def apply_table_style(df):
         return [''] * len(row)
 
     styler = df.style.apply(highlight_headers, axis=1)
+    
+    # SAĞA YASLAMA (CSS ile zorla)
+    if num_cols:
+        # Bu CSS kuralları hücrenin içindeki metni sağa iter
+        styles = [
+            {'selector': 'td', 'props': [('text-align', 'right'), ('display', 'block'), ('width', '100%')]},
+            {'selector': 'th', 'props': [('text-align', 'right')]} # Başlıkları da sağa yasla
+        ]
+        # set_properties yerine map veya set_table_styles kullanabiliriz ama 
+        # set_properties en garantisidir:
+        styler = styler.set_properties(subset=num_cols, **{'text-align': 'right', 'display': 'block'})
+    
     return styler
-
-# --- DRIVE BAĞLANTISI ---
-@st.cache_resource
-def get_drive_service():
-    scopes = ['https://www.googleapis.com/auth/drive.readonly']
-    if "gcp_service_account" in st.secrets:
-        try:
-            creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scopes)
-            return build('drive', 'v3', credentials=creds)
-        except Exception as e:
-            st.error(f"Secrets hatası: {e}")
-            return None
-    st.error("Kimlik doğrulama anahtarı bulunamadı!")
-    return None
 
 @st.cache_data(ttl=600)
 def list_files_in_folder(_service, folder_id): 
@@ -194,24 +219,6 @@ def main():
     tab_malzeme, tab_projeler = st.tabs(["🧱 Malzeme Kütüphanesi", "📋 Proje Teklifleri"])
 
     # ----------------------------------------
-    # YARDIMCI: SÜTUN AYARLARINI OLUŞTUR
-    # ----------------------------------------
-    def create_column_config(df):
-        config = {}
-        keywords = ["fiyat", "tutar", "toplam", "meblağ", "b.f", "iskonto", "kdv", "hakediş"]
-        
-        for col in df.columns:
-            # Eğer sütun sayısal ise veya isminde para ifadesi varsa
-            if any(k in str(col).lower() for k in keywords) or pd.api.types.is_numeric_dtype(df[col]):
-                config[col] = st.column_config.NumberColumn(
-                    col,
-                    format="%.2f",  # 1234.56 formatı (Sağa yaslı ve temiz)
-                )
-            else:
-                config[col] = st.column_config.TextColumn(col)
-        return config
-
-    # ----------------------------------------
     # SEKME 1: MALZEME
     # ----------------------------------------
     with tab_malzeme:
@@ -230,7 +237,6 @@ def main():
                 view = st.radio("Görünüm:", ["Kart Görünümü", "Liste Görünümü"], horizontal=True, label_visibility="collapsed")
 
                 if view == "Kart Görünümü":
-                    # ... (Kart görünümü kodu aynı kalacak, buraya dokunmuyoruz) ...
                     if df.empty:
                         st.warning("Sonuç yok.")
                     else:
@@ -261,22 +267,13 @@ def main():
                                     html_content = f"""<div class="material-card">{kod_html}<div class="card-title">{ad}</div><div class="card-details"><div class="detail-item">🧱 Malz: <span class="detail-val">{str_malz} {para_birimi}</span></div><div class="detail-item">👷 İşç: <span class="detail-val">{str_isc} {para_birimi}</span></div></div><div class="card-price">{str_top} {para_birimi}<span class="card-unit">{birim_str}</span></div><div class="card-desc">{aciklama}</div></div>"""
                                     st.markdown(html_content, unsafe_allow_html=True)
                 else:
-                    # LİSTE GÖRÜNÜMÜ GÜNCELLEMESİ
                     rename_map = {"Malzeme Birim Fiyat": "Malzeme B.F", "İşçilik Birim Fiyat": "İşçilik B.F", "Toplam Birim Fiyat": "Toplam B.F", "Para Birimi": "P.B", "Tanım": "Tanım", "Poz No": "Poz No", "Birim": "Birim"}
                     df_display = df.rename(columns=rename_map)
                     
-                    # Style fonksiyonunu çağırıyoruz
+                    # STYLER KULLANIYORUZ, COLUMN_CONFIG YOK
                     styled_df = apply_table_style(df_display)
                     
-                    # Column Config ile gösterim (Sağa Yaslama + Format)
-                    cfg = create_column_config(df_display)
-                    
-                    st.dataframe(
-                        styled_df, 
-                        column_config=cfg,
-                        use_container_width=True, 
-                        hide_index=True
-                    )
+                    st.dataframe(styled_df, use_container_width=True, hide_index=True)
         else:
             st.info("Malzeme listesi yok.")
 
@@ -301,10 +298,9 @@ def main():
                             st.subheader("📊 İcmal Özeti")
                             df_icmal = pd.read_excel(xls_proj, "İcmal Tablosu")
                             
-                            # GÜNCELLEME BURADA:
+                            # COLUMN CONFIG SİLİNDİ, SADECE STYLER
                             styled_icmal = apply_table_style(df_icmal)
-                            cfg_icmal = create_column_config(df_icmal)
-                            st.dataframe(styled_icmal, column_config=cfg_icmal, use_container_width=True)
+                            st.dataframe(styled_icmal, use_container_width=True)
                             st.divider()
                         
                         detay_sayfalari = [s for s in sheet_names if s != "İcmal Tablosu"]
@@ -313,10 +309,9 @@ def main():
                             if sayfa:
                                 df_detay = pd.read_excel(xls_proj, sayfa)
                                 
-                                # GÜNCELLEME BURADA:
+                                # COLUMN CONFIG SİLİNDİ, SADECE STYLER
                                 styled_detay = apply_table_style(df_detay)
-                                cfg_detay = create_column_config(df_detay)
-                                st.dataframe(styled_detay, column_config=cfg_detay, use_container_width=True)
+                                st.dataframe(styled_detay, use_container_width=True)
         else:
             st.info("Proje teklifi yok.")
 
