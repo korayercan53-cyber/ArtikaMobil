@@ -19,7 +19,8 @@ st.set_page_config(page_title="ArtikaPro Bulut", page_icon="🏗️", layout="wi
 # --- CSS TASARIMI ---
 st.markdown("""
 <style>
-    .block-container { padding-top: 2rem !important; margin-top: 0rem !important; }
+    /* Üst boşluğu daha da azalttık */
+    .block-container { padding-top: 1rem !important; margin-top: 0rem !important; }
     header {visibility: hidden;} 
     .stTabs [data-baseweb="tab-list"] { gap: 8px; }
     .stTabs [data-baseweb="tab"] { height: 45px; background-color: #f1f5f9; border-radius: 8px; font-weight: 600; }
@@ -66,57 +67,38 @@ def format_para_str(tutar):
         return "0,00"
 
 def apply_table_style(df):
-    # Orijinal veriyi bozmamak için kopyasını alalım
     df = df.copy()
     df = df.dropna(how='all')
-    
-    # 1. Hangi sütunların sayı olduğunu tespit et (Formatlamak için)
     num_cols = df.select_dtypes(include=['float64', 'int64']).columns
     other_cols = df.select_dtypes(exclude=['float64', 'int64']).columns
     
-    # 2. Sayısal Sütunları Temizle ve Formatla
     for col in num_cols:
         def fmt(x):
             if pd.isna(x) or str(x).strip() == "": return ""
             try:
-                # Sayıyı TR formatına çevir (1.234,56 şeklinde)
                 return "{:,.2f}".format(float(x)).replace(",", "X").replace(".", ",").replace("X", ".")
             except:
                 return str(x)
-        
-        # Kolonu "Object" tipine çevirip format fonksiyonunu uygula
         df[col] = df[col].astype(object).apply(fmt)
         
-    # 3. Metin (Text) Sütunlarındaki "None"ları Temizle
     for col in other_cols:
-        # Önce NaN değerlerini boş yap
         df[col] = df[col].fillna("")
-        # Kalan "nan", "None" metinleri varsa sil
         df[col] = df[col].astype(str).replace({"nan": "", "None": "", "NaN": ""}, regex=True)
-        # Sadece boş stringe çevir
         df[col] = df[col].apply(lambda x: "" if x.strip().lower() in ["nan", "none"] else x)
 
-    # 4. Başlık Satırlarını Tespit Et (Birim hücresi boşsa başlıktır)
     def highlight_headers(row):
         is_header = False
         val = row.get('Birim', "")
-        # Temizlediğimiz için artık NaN değil, "" (boşluk) kontrolü yapıyoruz
         if str(val).strip() == "":
-            is_header = True
-            
+            is_header = True   
         if is_header:
-            # Açık Mavi Arka Plan, Koyu Mavi Yazı
             return ['background-color: #dbeafe; color: #1e3a8a; font-weight: bold'] * len(row)
         else:
             return [''] * len(row)
 
-    # 5. Stili Uygula
     styler = df.style.apply(highlight_headers, axis=1)
-    
-    # Sayısal sütunları (artık metin oldukları için) sağa yasla
     if len(num_cols) > 0:
         styler = styler.set_properties(subset=num_cols, **{'text-align': 'right'})
-    
     return styler
 
 # --- DRIVE BAĞLANTISI ---
@@ -133,7 +115,6 @@ def get_drive_service():
     st.error("Kimlik doğrulama anahtarı bulunamadı!")
     return None
 
-# SADECE DOSYA LİSTESİNİ CACHE'LİYORUZ (Return: List of Dict -> Güvenli)
 @st.cache_data(ttl=600)
 def list_files_in_folder(_service, folder_id): 
     query = f"'{folder_id}' in parents and mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' and trashed = false"
@@ -144,8 +125,6 @@ def list_files_in_folder(_service, folder_id):
         st.error(f"Klasör okuma hatası: {e}")
         return []
 
-# --- DİKKAT: CACHE KALDIRILDI ---
-# Bu fonksiyonlar hata vermesin diye cache kullanmadan her seferinde indirecek.
 def load_excel_as_df(service, file_id):
     try:
         request = service.files().get_media(fileId=file_id)
@@ -180,7 +159,7 @@ def main():
     service = get_drive_service()
     if not service: return
 
-    # Sidebar'a Temizleme Butonu
+    # Sidebar (Logoyu burada tuttuk, ana ekrandan kaldırdık)
     with st.sidebar:
         st.image(LOGO_URL, width=50)
         st.write("---")
@@ -188,17 +167,15 @@ def main():
             st.cache_data.clear()
             st.rerun()
 
-    # --- HEADER ---
-    col1, col2 = st.columns([1, 10], gap="small")
-    with col1:
-        st.image(LOGO_URL, width=70)
-    with col2:
-        st.markdown("""
-            <div style="padding-top: 5px;">
-                <h1 style='margin: 0; padding: 0; font-size: 2.2rem; line-height: 1.2;'>ArtikaPro Bulut</h1>
-                <p style='margin: 0; color: gray; font-size: 1rem;'>Saha ve Ofis Arasında Kesintisiz Veri Akışı</p>
-            </div>
-        """, unsafe_allow_html=True)
+    # --- HEADER GÜNCELLEMESİ ---
+    # Logo sütunu (col1) ve resim kaldırıldı. 
+    # Yazı doğrudan div içine alınıp padding sıfırlandı.
+    st.markdown("""
+        <div style="padding-top: 0px; padding-bottom: 10px;">
+            <h1 style='margin: 0; padding: 0; font-size: 2.0rem; line-height: 1.2;'>ArtikaPro Bulut</h1>
+            <p style='margin: 0; color: gray; font-size: 0.9rem;'>Saha ve Ofis Arasında Kesintisiz Veri Akışı</p>
+        </div>
+    """, unsafe_allow_html=True)
 
     # --- DOSYALAR ---
     with st.spinner("Dosyalar taranıyor..."):
@@ -224,11 +201,9 @@ def main():
     # ----------------------------------------
     with tab_malzeme:
         if malzeme_dosyasi:
-            tarih_ham = malzeme_dosyasi.get('modifiedTime', '')
-            tarih_guzel = tarih_ham[:10] if tarih_ham else ""
-            st.info(f"📂 Liste: **{malzeme_dosyasi['name']}** ({tarih_guzel})")
+            # GÜNCELLEME: Dosya adı gösterilen st.info satırı kaldırıldı.
             
-            # Cache kapalı, doğrudan indiriyor
+            # Veriyi çek
             df = load_excel_as_df(service, malzeme_dosyasi['id'])
             
             if df is not None:
@@ -296,7 +271,6 @@ def main():
                                     """
                                     st.markdown(html_content, unsafe_allow_html=True)
                 else:
-                    # Sütun isimlerini kısalt
                     rename_map = {
                         "Malzeme Birim Fiyat": "Malzeme B.F",
                         "İşçilik Birim Fiyat": "İşçilik B.F",
@@ -308,14 +282,12 @@ def main():
                     }
                     df_display = df.rename(columns=rename_map)
                     
-                    # Sütun Konfigürasyonu
                     col_config = {
                         "Poz No": st.column_config.TextColumn("Poz No", width="small"),
                         "Tanım": st.column_config.TextColumn("Tanım", width="large"), 
                         "Birim": st.column_config.TextColumn("Birim", width="small"),
                         "Malzeme B.F": st.column_config.NumberColumn("Malzeme B.F", format="%.2f", width="small"),
                         "İşçilik B.F": st.column_config.NumberColumn("İşçilik B.F", format="%.2f", width="small"),
-                        # BURAYI GÜNCELLİYORUZ: "medium" -> "small"
                         "Toplam B.F": st.column_config.NumberColumn("Toplam B.F", format="%.2f", width="small"),
                         "P.B": st.column_config.TextColumn("P.B", width="small")
                     }
@@ -341,7 +313,6 @@ def main():
             
             if secilen_dosya:
                 with st.spinner("Proje detayları yükleniyor..."):
-                    # Cache kapalı, byte olarak indiriyoruz
                     file_bytes = download_excel_bytes(service, secilen_dosya['id'])
                     
                     if file_bytes:
