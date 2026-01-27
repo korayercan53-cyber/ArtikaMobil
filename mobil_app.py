@@ -67,70 +67,69 @@ def format_para_str(tutar):
         return "0,00"
 
 def apply_table_style(df):
-    # Orijinal veriyi korumak için kopya alıyoruz
+    # Veri kopyasını al ve tamamen boş satırları sil
     df = df.copy()
     df = df.dropna(how='all')
     
-    # 1. Sayısal Sütunları Belirle (İsimden ve Veri Tipinden)
-    # Bu sütunları kesinlikle sayısal formatta tutacağız ki SAĞA yaslansın.
+    # -------------------------------------------------------
+    # 1. SÜTUN AYRIŞTIRMA VE TEMİZLİK
+    # -------------------------------------------------------
+    # Fiyat/Tutar içeren sütunları belirle
     keywords = ["fiyat", "tutar", "toplam", "meblağ", "b.f", "iskonto", "kdv", "hakediş"]
     num_cols = []
     
     for col in df.columns:
-        # İsminde para ile ilgili ifade geçiyorsa
-        if any(k in str(col).lower() for k in keywords):
+        # İsminde anahtar kelime varsa VEYA zaten sayı tipindeyse
+        if any(k in str(col).lower() for k in keywords) or pd.api.types.is_numeric_dtype(df[col]):
+            num_cols.append(col)
+            # Sayıya çevir (Hata verenleri NaN yap)
             df[col] = pd.to_numeric(df[col], errors='coerce')
-            num_cols.append(col)
-        # İsmi uymasa bile veri tipi zaten sayıysa
-        elif pd.api.types.is_numeric_dtype(df[col]):
-            num_cols.append(col)
 
-    # Mükerrerleri temizle
+    # Mükerrer sütun isimlerini temizle
     num_cols = list(set(num_cols))
 
-    # 2. Metin Sütunlarını Temizle ("None", "nan" yazılarını yok et)
-    # Sayısal olmayan tüm sütunları bul
+    # Sayısal OLMAYAN (Metin) sütunları temizle
     other_cols = [c for c in df.columns if c not in num_cols]
-    
     for col in other_cols:
         # Önce boşlukları doldur
         df[col] = df[col].fillna("")
-        # Hepsini metne çevir
+        # Hepsini metne (string) çevir
         df[col] = df[col].astype(str)
-        # "nan", "None", "NaN", "null" gibi ifadeleri, BÜYÜK/KÜÇÜK harf fark etmeksizin sil
-        # Regex açıklaması: (?i) büyük/küçük harf duyarsız, ^ ve $ tam eşleşme (sadece "None" yazıyorsa siler, "Nonevarmı"yı silmez)
+        # "nan", "None", "NaN", "null" yazılarını SİL
         df[col] = df[col].replace(r'(?i)^(nan|none|null)$', "", regex=True)
         # Sağdan soldan boşlukları al
         df[col] = df[col].str.strip()
 
-    # 3. Formatlayıcı Fonksiyon (Sayılar için)
+    # -------------------------------------------------------
+    # 2. GÖRÜNÜM AYARLARI (STYLER)
+    # -------------------------------------------------------
+
+    # Formatlayıcı Fonksiyon (Sayılar için)
     def tr_fmt(x):
-        # Eğer değer boşsa, None ise veya tanımsızsa BOŞ STRING döndür
+        # Değer boşsa, None ise veya NaN ise -> BOŞLUK DÖNDÜR
         if pd.isna(x) or x is None or str(x).strip() == "":
             return ""
         try:
-            # 1.234,56 formatı
+            # Sayı formatı: 1.234,56
             return "{:,.2f}".format(x).replace(",", "X").replace(".", ",").replace("X", ".")
         except:
             return ""
 
-    # 4. Başlık (Header) Satırı Renklendirme
+    # Başlık (Header) Satırı Renklendirme Mantığı
     def highlight_headers(row):
         val = row.get('Birim', "")
-        # Birim sütunu boşsa bu satır bir başlıktır
+        # Birim sütunu boşsa, bu satır bir başlıktır
         if str(val).strip() == "":
             return ['background-color: #dbeafe; color: #1e3a8a; font-weight: bold'] * len(row)
         return [''] * len(row)
 
-    # 5. Stili Uygula
+    # Stili oluştur
     styler = df.style.apply(highlight_headers, axis=1)
     
     if num_cols:
-        # na_rep="" parametresini ekleyerek, sayısal sütunlardaki boş (NaN) değerlerin 
-        # "None" yerine boşluk ("") olarak görünmesini GARANTİ ediyoruz.
+        # 1. Formatı uygula (na_rep="" diyerek NaN değerleri boşluk yapıyoruz)
         styler = styler.format(tr_fmt, subset=num_cols, na_rep="")
-        
-        # Sayısal sütunları zorla SAĞA yasla (Hem CSS ile hem veri tipiyle)
+        # 2. Bu sütunları SAĞA yasla
         styler = styler.set_properties(subset=num_cols, **{'text-align': 'right'})
     
     return styler
