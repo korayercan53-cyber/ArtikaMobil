@@ -308,24 +308,22 @@ def main():
                     }
                     df_display = df.rename(columns=rename_map)
                     
-                    # Sütun Konfigürasyonu (Genişlik Ayarı)
-                    # "width": "small" veya "medium" diyerek daraltmaya çalışıyoruz.
+                    # Sütun Konfigürasyonu
                     col_config = {
                         "Poz No": st.column_config.TextColumn("Poz No", width="small"),
-                        "Tanım": st.column_config.TextColumn("Tanım", width="large"), # Tanım geniş kalsın
+                        "Tanım": st.column_config.TextColumn("Tanım", width="large"), 
                         "Birim": st.column_config.TextColumn("Birim", width="small"),
                         "Malzeme B.F": st.column_config.NumberColumn("Malzeme B.F", format="%.2f", width="small"),
                         "İşçilik B.F": st.column_config.NumberColumn("İşçilik B.F", format="%.2f", width="small"),
-                        "Toplam B.F": st.column_config.NumberColumn("Toplam B.F", format="%.2f", width="medium"), # Toplam biraz daha belirgin
+                        # BURAYI GÜNCELLİYORUZ: "medium" -> "small"
+                        "Toplam B.F": st.column_config.NumberColumn("Toplam B.F", format="%.2f", width="small"),
                         "P.B": st.column_config.TextColumn("P.B", width="small")
                     }
 
-                    # use_container_width=True -> Ekranın tamamını kapla (Bunu kapatırsan daha sıkışık olur)
-                    # use_container_width=False yaparsan sütunlar sadece içerik kadar yer kaplar (AutoFit benzeri)
                     st.dataframe(
                         df_display, 
                         column_config=col_config,
-                        use_container_width=False,  # <-- BURAYI FALSE YAPTIK (ÖNEMLİ)
+                        use_container_width=False, 
                         hide_index=True
                     )
         else:
