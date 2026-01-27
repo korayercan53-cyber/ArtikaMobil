@@ -72,39 +72,23 @@ def apply_table_style(df):
     df = df.dropna(how='all')
     
     # -------------------------------------------------------
-    # 1. SAYISAL SÜTUNLARI BELİRLE
+    # 1. SAYISAL SÜTUNLARI BELİRLE VE FLOAT YAP
     # -------------------------------------------------------
+    # Veriyi "String"e ÇEVİRMİYORUZ. Sayı olarak kalmalı.
+    
     keywords = ["fiyat", "tutar", "toplam", "meblağ", "b.f", "iskonto", "kdv", "hakediş"]
     num_cols = []
     
     for col in df.columns:
         if any(k in str(col).lower() for k in keywords) or pd.api.types.is_numeric_dtype(df[col]):
             num_cols.append(col)
-    
+            # Hepsini sayıya çevir (Hata verenler NaN olur)
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+            
     num_cols = list(set(num_cols))
 
     # -------------------------------------------------------
-    # 2. SAYILARI METNE ÇEVİR (None Yazısını Yok Etmek İçin)
-    # -------------------------------------------------------
-    for col in num_cols:
-        # Önce sayısal yap
-        s_numeric = pd.to_numeric(df[col], errors='coerce')
-        
-        # Özel dönüşüm: NaN ise boşluk, Sayı ise Formatlı Metin
-        def convert_to_formatted_string(val):
-            if pd.isna(val):
-                return ""  # None yerine boşluk
-            try:
-                # TR Formatı
-                return "{:,.2f}".format(val).replace(",", "X").replace(".", ",").replace("X", ".")
-            except:
-                return ""
-        
-        # Sütunu metne çeviriyoruz
-        df[col] = s_numeric.apply(convert_to_formatted_string)
-
-    # -------------------------------------------------------
-    # 3. DİĞER METİN SÜTUNLARINI TEMİZLE
+    # 2. METİN SÜTUNLARINI TEMİZLE
     # -------------------------------------------------------
     other_cols = [c for c in df.columns if c not in num_cols]
     for col in other_cols:
@@ -114,7 +98,22 @@ def apply_table_style(df):
         df[col] = df[col].str.strip()
 
     # -------------------------------------------------------
-    # 4. GÖRÜNÜM AYARLARI (STYLER İLE ZORLA SAĞA YASLA)
+    # 3. GÖRÜNTÜLEME FORMATI (FORMATTER)
+    # -------------------------------------------------------
+    # Bu fonksiyon veriyi değiştirmez, sadece ekranda nasıl görüneceğini belirler.
+    
+    def tr_fmt(x):
+        # Eğer değer NaN (boş) ise, boş string göster
+        if pd.isna(x) or x is None:
+            return ""
+        try:
+            # Sayı varsa TR formatında göster
+            return "{:,.2f}".format(x).replace(",", "X").replace(".", ",").replace("X", ".")
+        except:
+            return ""
+
+    # -------------------------------------------------------
+    # 4. STİL OLUŞTURMA
     # -------------------------------------------------------
     
     # Başlık Satırı Renklendirme
@@ -124,14 +123,16 @@ def apply_table_style(df):
             return ['background-color: #dbeafe; color: #1e3a8a; font-weight: bold'] * len(row)
         return [''] * len(row)
 
-    # Styler Başlat
     styler = df.style.apply(highlight_headers, axis=1)
     
-    # KRİTİK NOKTA: CSS ile Sağa Yaslama
-    # "map" fonksiyonu her hücreye tek tek bakar, "set_properties" bazen ezilebilir.
-    # "!important" ile Streamlit'in varsayılan sola yaslama ayarını eziyoruz.
     if num_cols:
-        styler = styler.map(lambda x: "text-align: right !important; display: block;", subset=num_cols)
+        # PÜF NOKTASI BURASI:
+        # Veri hala float (sayı) olduğu için Streamlit sağa yaslar.
+        # .format() komutu ile NaN değerlerin yerine "" (boşluk) koyuyoruz.
+        styler = styler.format(tr_fmt, subset=num_cols)
+        
+        # Garanti olması için CSS ile de destekliyoruz
+        styler = styler.set_properties(subset=num_cols, **{'text-align': 'right'})
     
     return styler
 
