@@ -66,6 +66,7 @@ def format_para_str(tutar):
         return "0,00"
 
 # --- TABLE STYLER (Çözüm Fonksiyonu) ---
+# --- TABLE STYLER (Çözüm Fonksiyonu) ---
 def apply_table_style(df):
     df = df.copy()
     df = df.dropna(how='all')
@@ -79,8 +80,6 @@ def apply_table_style(df):
             num_cols.append(col)
             # Veriyi sayıya çevir (Float)
             df[col] = pd.to_numeric(df[col], errors='coerce')
-            # KRİTİK ADIM: Boşlukları (NaN) 0 ile doldur. 
-            # Böylece Streamlit 'None' yazamaz, çünkü değer 0 olur.
             df[col] = df[col].fillna(0)
     
     num_cols = list(set(num_cols))
@@ -95,27 +94,46 @@ def apply_table_style(df):
 
     # 3. Formatlayıcı (Görünmez 0 ve Binlik Ayıracı)
     def tr_formatter(x):
-        # Eğer değer 0 ise (bizim doldurduğumuz boşluklar), BOŞ GÖSTER
-        if x == 0:
-            return ""
-        try:
-            # Diğer sayıları binlik ayraçlı formatla: 1.234,56
-            return "{:,.2f}".format(x).replace(",", "X").replace(".", ",").replace("X", ".")
-        except:
-            return ""
+        if x == 0: return ""
+        try: return "{:,.2f}".format(x).replace(",", "X").replace(".", ",").replace("X", ".")
+        except: return ""
 
-    # 4. Başlık Satırı Renklendirme
-    def highlight_headers(row):
+    # 4. Başlık Satırı ve Kırmızı Teklif Renklendirme
+    def highlight_cells(row):
+        styles = [''] * len(row)
         val = row.get('Birim', "")
+        
+        # A. Başlık Satırı Kontrolü (Mavi)
         if str(val).strip() == "":
             return ['background-color: #dbeafe; color: #1e3a8a; font-weight: bold'] * len(row)
-        return [''] * len(row)
+        
+        # B. Kırmızı Teklif Kontrolü (Tersten Kar Hesabı ile Kıyaslama)
+        teklif_col = next((c for c in row.index if 'toplam teklif' in str(c).lower() or 'teklif tutarı' in str(c).lower()), None)
+        maliyet_col = next((c for c in row.index if ('toplam maliyet' in str(c).lower() or 'maliyet' in str(c).lower()) and 'teklif' not in str(c).lower()), None)
+        kar_col = next((c for c in row.index if 'kar' in str(c).lower()), None)
+        
+        if teklif_col and maliyet_col and kar_col:
+            try:
+                maliyet = float(row[maliyet_col])
+                teklif = float(row[teklif_col])
+                kar_str = str(row[kar_col]).replace('%', '').replace(',', '.')
+                kar = float(kar_str)
+                
+                beklenen_teklif = maliyet * (1 + kar / 100)
+                
+                # Eğer matematik uymuyorsa (1 TL'den fazla fark varsa elle girilmiştir) yazıyı kırmızı yap
+                if abs(beklenen_teklif - teklif) > 1.0:
+                    idx = row.index.get_loc(teklif_col)
+                    styles[idx] = 'color: #ef4444; font-weight: bold;'
+            except:
+                pass
+                
+        return styles
 
-    styler = df.style.apply(highlight_headers, axis=1)
+    styler = df.style.apply(highlight_cells, axis=1)
 
     # 5. Format ve Sağa Yaslama
     if num_cols:
-        # Veri "Sayı" olduğu için sağa yaslanmaya meyillidir, CSS ile garantiye alıyoruz
         styler = styler.format(tr_formatter, subset=num_cols)
         styler = styler.set_properties(subset=num_cols, **{'text-align': 'right'})
 
